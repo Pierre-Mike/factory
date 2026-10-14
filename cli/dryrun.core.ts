@@ -25,6 +25,38 @@ const CI_CD_FILES = [
 export const ciCdChanges = (changedFiles: ReadonlyArray<string>): string[] =>
   changedFiles.filter((file) => CI_CD_FILES.some((pattern) => pattern.test(file)))
 
+/**
+ * What a replayed job keeps from the local environment: only what the tools need to start. A
+ * runner has none of the developer's other variables, so a step that passes only because of one
+ * (a token, a debug flag) must fail here too. AXIOMS_ALLOW_LOCAL_HARNESS passes through for the
+ * factory's selftest, whose project pins an unreleased checkout that real CI could not install
+ * anyway.
+ */
+const JOB_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "TMPDIR",
+  "LANG",
+  "LC_ALL",
+  "TERM",
+  "AXIOMS_ALLOW_LOCAL_HARNESS",
+]
+
+export const jobEnv = (
+  local: Readonly<Record<string, string | undefined>>,
+): Record<string, string> => ({
+  ...Object.fromEntries(
+    JOB_ENV_KEYS.flatMap((key) => {
+      const value = local[key]
+      return value === undefined ? [] : [[key, value] as const]
+    }),
+  ),
+  CI: "true",
+})
+
 export type PlannedStep =
   | { readonly kind: "run"; readonly name: string; readonly run: string; readonly cwd: string }
   | { readonly kind: "provided"; readonly name: string; readonly reason: string }

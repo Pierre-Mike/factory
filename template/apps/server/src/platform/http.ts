@@ -23,7 +23,8 @@ const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
 }
 
 export const errorEnvelope = (error: TaggedError) => {
-  const status = STATUS_BY_TAG[error._tag]
+  // hasOwn, so a tag named like an Object.prototype key ("constructor") is not "registered".
+  const status = Object.hasOwn(STATUS_BY_TAG, error._tag) ? STATUS_BY_TAG[error._tag] : undefined
   if (status === undefined) {
     console.error("unregistered error tag reached the boundary:", error)
     return {

@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "types": ["bun"], "outDir": "dist", "rootDir": "." },
+  // No DOM lib: Workers has no document, window or localStorage, so the server must not typecheck them.
+  "compilerOptions": { "lib": ["ES2022"], "types": ["bun"], "outDir": "dist", "rootDir": "." },
   "references": [{ "path": "../../shared" }],
   "include": ["src", "smoke"]
 }

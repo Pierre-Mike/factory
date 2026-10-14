@@ -45,13 +45,15 @@ export interface RunOptions {
   readonly cmd: ReadonlyArray<string>
   readonly cwd: string
   readonly env?: Record<string, string>
+  /** false: the command sees `env` only, not this process's environment. Defaults to true. */
+  readonly inheritEnv?: boolean
 }
 
 /** Run a command with inherited stdio and return its exit code. */
 export const run = async (opts: RunOptions): Promise<number> => {
   const proc = Bun.spawn([...opts.cmd], {
     cwd: opts.cwd,
-    env: { ...process.env, ...opts.env },
+    env: opts.inheritEnv === false ? { ...opts.env } : { ...process.env, ...opts.env },
     stdout: "inherit",
     stderr: "inherit",
     stdin: "inherit",
@@ -79,7 +81,7 @@ export const readJson = (path: string): unknown => {
   }
 }
 
-/** Walk up from `start` to the directory holding the project's AGENTS.md or package.json workspaces. */
+/** Walk up from `start` to the first package.json that declares workspaces: the project root. */
 export const projectRoot = (start: string): string => {
   let dir = start
   while (true) {

@@ -10,11 +10,15 @@ import { run } from "../shell"
 
 const PERSIST = ".wrangler/smoke"
 
-const waitForHealth = async (url: string): Promise<boolean> => {
+/** Poll /api/health for up to 60s, giving up as soon as wrangler dev has exited. */
+const waitForHealth = async (input: {
+  readonly url: string
+  readonly alive: () => boolean
+}): Promise<boolean> => {
   const deadline = performance.now() + 60_000
-  while (performance.now() < deadline) {
+  while (performance.now() < deadline && input.alive()) {
     try {
-      const res = await fetch(`${url}/api/health`)
+      const res = await fetch(`${input.url}/api/health`)
       if (res.ok) return true
     } catch {
       // not listening yet
@@ -72,8 +76,12 @@ export const smoke = async (root: string): Promise<boolean> => {
     { cwd: server, env: { ...process.env, ...env }, stdout: "ignore", stderr: "inherit" },
   )
   try {
-    if (!(await waitForHealth(url))) {
-      console.error("✖ smoke: /api/health never answered 200 within 60s")
+    if (!(await waitForHealth({ url, alive: () => dev.exitCode === null }))) {
+      console.error(
+        dev.exitCode === null
+          ? "✖ smoke: /api/health never answered 200 within 60s"
+          : `✖ smoke: wrangler dev exited (code ${dev.exitCode}) before /api/health answered`,
+      )
       return false
     }
     console.error("── smoke tests ──")

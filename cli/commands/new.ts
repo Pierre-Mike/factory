@@ -12,8 +12,10 @@ import { parseNewArgs, releaseSpec } from "../new.core"
 import { fail, harnessVersion, run, runTool, TEMPLATE_DIR } from "../shell"
 import { sync } from "./sync"
 
-const TEXT = /\.(ts|tsx|json|jsonc|md|yml|yaml|html|sql|toml)$|^\.gitignore$/
-const SKIP = new Set(["node_modules", "dist", ".wrangler", "bun.lock"])
+const TEXT = /\.(ts|tsx|json|jsonc|md|yml|yaml|html|sql|toml|lock)$|^\.gitignore$/
+// template/bun.lock is copied: a new project (and the selftest) installs the versions the factory
+// tested, not whatever was published this morning. `bun run lock:template` refreshes it.
+const SKIP = new Set(["node_modules", "dist", ".wrangler"])
 
 const replaceIn = async (input: {
   readonly dir: string

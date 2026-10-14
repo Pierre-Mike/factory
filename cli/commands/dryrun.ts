@@ -10,7 +10,7 @@
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { ciCdChanges, type PlannedJob, planWorkflow } from "../dryrun.core"
+import { ciCdChanges, jobEnv, type PlannedJob, planWorkflow } from "../dryrun.core"
 import { readText, run } from "../shell"
 import { lintWorkflows } from "./workflows"
 
@@ -51,7 +51,8 @@ const runJob = async (input: {
     const code = await run({
       cmd: ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step.run],
       cwd: join(dir, step.cwd),
-      env: { CI: "true" },
+      env: jobEnv(process.env),
+      inheritEnv: false,
     })
     if (code !== 0) {
       console.error(`✖ job ${input.job.name} failed at "${step.name}" (clone kept at ${dir})`)

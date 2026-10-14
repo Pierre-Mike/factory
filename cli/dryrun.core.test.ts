@@ -1,5 +1,19 @@
 import { describe, expect, it } from "bun:test"
-import { ciCdChanges, planWorkflow } from "./dryrun.core"
+import { ciCdChanges, jobEnv, planWorkflow } from "./dryrun.core"
+
+describe("jobEnv", () => {
+  it("keeps what tools need to start, drops everything else, and sets CI", () => {
+    expect(
+      jobEnv({
+        PATH: "/bin",
+        HOME: "/h",
+        CLOUDFLARE_API_TOKEN: "secret",
+        DEBUG: "1",
+        TERM: undefined,
+      }),
+    ).toEqual({ PATH: "/bin", HOME: "/h", CI: "true" })
+  })
+})
 
 describe("ciCdChanges", () => {
   it("keeps the files that can break CI or a deploy", () => {
@@ -78,6 +92,7 @@ describe("planWorkflow", () => {
     const plan = planWorkflow({
       workflow: workflow([
         { uses: "someone/deploy-action@v1" },
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub Actions expression, not a JS template
         { run: "echo ${{ secrets.TOKEN }}" },
         { if: "github.event_name == 'push'", run: "bun run deploy" },
         { name: "empty" },

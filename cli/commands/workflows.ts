@@ -42,9 +42,8 @@ export const lintWorkflows = async (root: string): Promise<boolean> => {
   const lint = await actionlint(root)
   const audit = zizmor()
   if (lint === undefined || audit === undefined) {
-    console.error(
-      `✖ lint-workflows: ${lint ? "zizmor" : "actionlint"} is not installed (${INSTALL_HINT})`,
-    )
+    const missing = [lint ? [] : ["actionlint"], audit ? [] : ["zizmor"]].flat().join(" and ")
+    console.error(`✖ lint-workflows: ${missing} not installed (${INSTALL_HINT})`)
     return false
   }
   const linted = (await run({ cmd: lint, cwd: root })) === 0

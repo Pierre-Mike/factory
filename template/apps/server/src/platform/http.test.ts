@@ -12,10 +12,12 @@ describe("errorEnvelope", () => {
   })
 
   it("redacts an unregistered tag to a 500", () => {
-    expect(errorEnvelope({ _tag: "SecretInternalThing" })).toEqual({
-      body: { ok: false, error: { _tag: "InternalServerError" } },
-      status: 500,
-    })
+    for (const _tag of ["SecretInternalThing", "constructor", "toString"]) {
+      expect(errorEnvelope({ _tag })).toEqual({
+        body: { ok: false, error: { _tag: "InternalServerError" } },
+        status: 500,
+      })
+    }
   })
 })
 

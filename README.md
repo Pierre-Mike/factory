@@ -51,4 +51,8 @@ To roll out a harness change: tag a release here, bump the dependency in the pro
 bun install
 bun run verify     # lint, typecheck, unit tests, rule fixtures
 bun run selftest   # the full loop on a generated project (needs wrangler's local runtime)
+bun run lock:template  # refresh template/bun.lock to the latest matching versions, then selftest
 ```
+
+`template/bun.lock` pins the versions the selftest ran against. New projects start from it, so an
+upstream release cannot break the factory's CI or a fresh project until the lockfile is refreshed.
