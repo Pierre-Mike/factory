@@ -66,6 +66,8 @@ export const smoke = async (root: string): Promise<boolean> => {
       String(port),
       "--persist-to",
       PERSIST,
+      "--var",
+      "ENVIRONMENT:development",
     ],
     { cwd: server, env: { ...process.env, ...env }, stdout: "ignore", stderr: "inherit" },
   )
