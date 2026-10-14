@@ -28,9 +28,9 @@ export const sliceFiles = (input: {
   const files: Record<string, string> = {
     [`src/features/${name}/${name}.core.ts`]: `/**
  * Functional core for the \`${name}\` slice. Pure: plain data in, plain data out, failures are
- * values (Either). The shell (*.io.ts / *.routes.ts) reads the world and passes it in.
+ * values (Result). The shell (*.io.ts / *.routes.ts) reads the world and passes it in.
  */
-import { Either } from "effect"
+import { Result } from "effect"
 
 export interface ${P}Result {
   readonly id: string
@@ -42,11 +42,11 @@ export interface Invalid${P}Id {
   readonly received: string
 }
 
-/** Parse the \`?id=\` query param. Invalid input is a Left, never a throw. */
-export const parse${P}Id = (raw: string | undefined): Either.Either<string, Invalid${P}Id> => {
+/** Parse the \`?id=\` query param. Invalid input is a failure, never a throw. */
+export const parse${P}Id = (raw: string | undefined): Result.Result<string, Invalid${P}Id> => {
   const trimmed = (raw ?? "").trim()
-  if (trimmed === "") return Either.left({ _tag: "Invalid${P}Id", received: raw ?? "" })
-  return Either.right(trimmed)
+  if (trimmed === "") return Result.fail({ _tag: "Invalid${P}Id", received: raw ?? "" })
+  return Result.succeed(trimmed)
 }
 
 /** Build the response payload from already-read inputs. Pure, total. */
@@ -56,16 +56,16 @@ export const build${P} = (input: { readonly id: string }): ${P}Result => ({
 })
 `,
     [`src/features/${name}/${name}.core.test.ts`]: `import { describe, expect, it } from "bun:test"
-import { Either } from "effect"
+import { Result } from "effect"
 import { build${P}, parse${P}Id } from "./${name}.core"
 
 describe("parse${P}Id", () => {
   it("accepts a non-empty id", () => {
-    expect(parse${P}Id("abc")).toEqual(Either.right("abc"))
+    expect(parse${P}Id("abc")).toEqual(Result.succeed("abc"))
   })
 
-  it("returns a tagged Left for a missing id", () => {
-    expect(Either.isLeft(parse${P}Id(undefined))).toBe(true)
+  it("returns a tagged failure for a missing id", () => {
+    expect(Result.isFailure(parse${P}Id(undefined))).toBe(true)
   })
 })
 
@@ -82,10 +82,10 @@ describe("build${P}", () => {
 import { Context, Effect, Layer } from "effect"
 import type { AppDeps } from "../../platform/deps"
 
-export class ${P}Io extends Context.Tag("${P}Io")<
+export class ${P}Io extends Context.Service<
   ${P}Io,
   { readonly findById: (id: string) => Effect.Effect<{ readonly id: string }> }
->() {}
+>()("${P}Io") {}
 
 export const ${P}IoLive = (_deps: AppDeps): Layer.Layer<${P}Io> =>
   Layer.succeed(${P}Io, {
@@ -94,7 +94,7 @@ export const ${P}IoLive = (_deps: AppDeps): Layer.Layer<${P}Io> =>
 `,
     [`src/features/${name}/${name}.routes.ts`]: `/**
  * Hono shell for the \`${name}\` slice: impure read through the io service, pure core in the
- * middle, shared error envelope on the Left branch.
+ * middle, shared error envelope on a failure. Core results are lifted with \`Effect.fromResult\`.
  */
 import { Effect } from "effect"
 import { Hono } from "hono"
@@ -108,7 +108,7 @@ export const build${P}App = (runtime: RouteRuntime<${P}Io>) =>
       c,
       runtime,
       program: Effect.gen(function* () {
-        const id = yield* parse${P}Id(c.req.query("id"))
+        const id = yield* Effect.fromResult(parse${P}Id(c.req.query("id")))
         const io = yield* ${P}Io
         const entity = yield* io.findById(id)
         return build${P}({ id: entity.id })

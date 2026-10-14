@@ -27,7 +27,11 @@ const healthy: DoctorInput = {
   featureNames: ["health"],
   smokeFiles: ["health.smoke.test.ts"],
   allowlistedTags: ["InvalidVerboseFlag"],
-  featureSource: 'return Either.left({ _tag: "InvalidVerboseFlag" })',
+  featureSource: 'return Result.fail({ _tag: "InvalidVerboseFlag" })',
+  effectRanges: [
+    { workspace: "shared", range: "^4.0.4" },
+    { workspace: "apps/server", range: "4.0.4" },
+  ],
 }
 
 const rules = (input: DoctorInput) => runDoctor(input).map((f) => f.rule)
@@ -92,6 +96,14 @@ describe("runDoctor", () => {
     expect(rules({ ...healthy, allowlistedTags: ["InvalidVerboseFlag", "InvalidDemoId"] })).toEqual(
       ["errors"],
     )
+  })
+})
+
+describe("effect major", () => {
+  it("flags a workspace still on Effect 3", () => {
+    expect(
+      rules({ ...healthy, effectRanges: [{ workspace: "apps/web", range: "^3.21.0" }] }),
+    ).toEqual(["effect"])
   })
 })
 

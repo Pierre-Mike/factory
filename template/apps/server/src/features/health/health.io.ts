@@ -6,7 +6,7 @@
 import { Clock, Context, type Effect, Layer } from "effect"
 import type { AppDeps } from "../../platform/deps"
 
-export class HealthClock extends Context.Tag("HealthClock")<
+export class HealthClock extends Context.Service<
   HealthClock,
   {
     /** Wall-clock now, epoch ms. */
@@ -15,7 +15,7 @@ export class HealthClock extends Context.Tag("HealthClock")<
     readonly startedAt: number
     readonly version: string
   }
->() {}
+>()("HealthClock") {}
 
 export const HealthClockLive = (deps: AppDeps): Layer.Layer<HealthClock> =>
   Layer.sync(HealthClock, () => ({

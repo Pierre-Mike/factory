@@ -11,7 +11,7 @@ import { Schema as S } from "effect"
 
 export const ApiErrorBody = S.Struct({
   ok: S.Literal(false),
-  error: S.Struct({ _tag: S.String }, S.Record({ key: S.String, value: S.Unknown })),
+  error: S.StructWithRest(S.Struct({ _tag: S.String }), [S.Record(S.String, S.Unknown)]),
 })
 
 export type ApiErrorBody = S.Schema.Type<typeof ApiErrorBody>

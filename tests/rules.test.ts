@@ -55,7 +55,7 @@ const FIXTURES: ReadonlyArray<Fixture> = [
   },
   {
     path: `${F}/g/g.core.ts`,
-    code: 'import { Either } from "effect"\n\nexport const ok = Either.right(1)\n',
+    code: 'import { Result } from "effect"\n\nexport const ok = Result.succeed(1)\n',
     expect: [],
   },
   // slice shell files

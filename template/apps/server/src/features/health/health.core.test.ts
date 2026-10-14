@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { Either } from "effect"
+import { Result } from "effect"
 import * as fc from "fast-check"
 import { buildStatus, parseVerbose } from "./health.core"
 
@@ -17,22 +17,22 @@ describe("buildStatus", () => {
 
 describe("parseVerbose", () => {
   it("defaults to false when the flag is absent", () => {
-    expect(parseVerbose(undefined)).toEqual(Either.right(false))
-    expect(parseVerbose("")).toEqual(Either.right(false))
+    expect(parseVerbose(undefined)).toEqual(Result.succeed(false))
+    expect(parseVerbose("")).toEqual(Result.succeed(false))
   })
 
   it("parses truthy and falsy spellings", () => {
-    expect(parseVerbose("true")).toEqual(Either.right(true))
-    expect(parseVerbose("1")).toEqual(Either.right(true))
-    expect(parseVerbose("false")).toEqual(Either.right(false))
-    expect(parseVerbose("0")).toEqual(Either.right(false))
+    expect(parseVerbose("true")).toEqual(Result.succeed(true))
+    expect(parseVerbose("1")).toEqual(Result.succeed(true))
+    expect(parseVerbose("false")).toEqual(Result.succeed(false))
+    expect(parseVerbose("0")).toEqual(Result.succeed(false))
   })
 
-  it("returns a tagged Left for anything else (error-as-value, no throw)", () => {
+  it("returns a tagged failure for anything else (error-as-value, no throw)", () => {
     const result = parseVerbose("maybe")
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(result.left).toEqual({ _tag: "InvalidVerboseFlag", received: "maybe" })
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure).toEqual({ _tag: "InvalidVerboseFlag", received: "maybe" })
     }
   })
 })
@@ -54,11 +54,11 @@ describe("core properties", () => {
     )
   })
 
-  it("parseVerbose is total: any string yields an Either, never a throw", () => {
+  it("parseVerbose is total: any string yields a Result, never a throw", () => {
     fc.assert(
       fc.property(fc.string(), (raw) => {
         const result = parseVerbose(raw)
-        expect(Either.isEither(result)).toBe(true)
+        expect(Result.isResult(result)).toBe(true)
       }),
     )
   })

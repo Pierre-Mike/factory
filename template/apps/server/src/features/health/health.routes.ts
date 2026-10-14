@@ -1,6 +1,6 @@
 /**
  * Hono shell for the `health` slice: read the clock (impure), parse the flag and build the status
- * (pure), respond. A bad `?verbose=` flag is a typed Left that becomes the shared 400 envelope.
+ * (pure), respond. A bad `?verbose=` flag is a typed failure that becomes the shared 400 envelope.
  */
 import { Effect } from "effect"
 import { Hono } from "hono"
@@ -16,7 +16,7 @@ export const buildHealthApp = (runtime: RouteRuntime<HealthClock>) =>
       program: Effect.gen(function* () {
         const clock = yield* HealthClock
         const now = yield* clock.now()
-        const verbose = yield* parseVerbose(c.req.query("verbose"))
+        const verbose = yield* Effect.fromResult(parseVerbose(c.req.query("verbose")))
         const status = buildStatus({ version: clock.version, startedAt: clock.startedAt, now })
         return verbose ? { ...status, verbose: true } : status
       }),

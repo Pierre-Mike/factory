@@ -29,6 +29,8 @@ export interface DoctorInput {
   readonly smokeFiles: ReadonlyArray<string>
   readonly allowlistedTags: ReadonlyArray<string>
   readonly featureSource: string
+  /** The `effect` version range each workspace declares, e.g. `{ workspace: "shared", range: "^4.0.4" }`. */
+  readonly effectRanges: ReadonlyArray<{ readonly workspace: string; readonly range: string }>
 }
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -193,6 +195,18 @@ const checkAllowlist = (input: DoctorInput): Finding[] =>
       remedy: `remove ${tag} from platform/http.ts`,
     }))
 
+/** The canon and the generated code are written for this Effect major (Result, Context.Service). */
+export const EFFECT_MAJOR = 4
+
+const checkEffectMajor = (input: DoctorInput): Finding[] =>
+  input.effectRanges
+    .filter(({ range }) => !new RegExp(`^[~^]?${EFFECT_MAJOR}\\.`).test(range))
+    .map(({ workspace, range }) => ({
+      rule: "effect",
+      problem: `${workspace} depends on effect ${range}, but the harness targets Effect ${EFFECT_MAJOR}`,
+      remedy: `set "effect": "^${EFFECT_MAJOR}.x" and migrate (Either -> Result, Context.Tag -> Context.Service)`,
+    }))
+
 export const runDoctor = (input: DoctorInput): Finding[] => [
   ...checkBiome(input.biome),
   ...checkLefthook(input.lefthook),
@@ -202,6 +216,7 @@ export const runDoctor = (input: DoctorInput): Finding[] => [
   ...checkCi(input.ciWorkflow),
   ...checkSmokeCoverage(input),
   ...checkAllowlist(input),
+  ...checkEffectMajor(input),
 ]
 
 /** Pull the tag names out of `const STATUS_BY_TAG ... = { Tag: 400, ... }`. */

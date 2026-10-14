@@ -4,12 +4,12 @@
  * No Effect runtime, no Layer/Context, no I/O. Inputs come in as plain data,
  * results go out as plain data, and failures are values: this module models its
  * one fallible path (parsing an optional `?verbose=` query flag) as
- * `Either<HealthError, A>` rather than throwing. The imperative shell
+ * `Result<A, HealthError>` rather than throwing. The imperative shell
  * (`health.io.ts` / `health.routes.ts`) reads the clock + version, calls
- * these functions, and lifts any `Either` into Effect at the boundary.
+ * these functions, and lifts any `Result` into Effect at the boundary with `Effect.fromResult`.
  */
 import type { HealthStatus } from "@app/shared"
-import { Either } from "effect"
+import { Result } from "effect"
 
 export interface HealthInput {
   readonly version: string
@@ -38,14 +38,14 @@ export interface InvalidVerboseFlag {
 
 /**
  * Parse the optional `?verbose=` query flag. Demonstrates the core's
- * error-as-value discipline: invalid input is an `Either.left`, never a throw.
+ * error-as-value discipline: invalid input is an `Result.fail`, never a throw.
  * Absent flag defaults to `false` on the right.
  */
 export const parseVerbose = (
   raw: string | undefined,
-): Either.Either<boolean, InvalidVerboseFlag> => {
-  if (raw === undefined || raw === "") return Either.right(false)
-  if (raw === "true" || raw === "1") return Either.right(true)
-  if (raw === "false" || raw === "0") return Either.right(false)
-  return Either.left({ _tag: "InvalidVerboseFlag", received: raw })
+): Result.Result<boolean, InvalidVerboseFlag> => {
+  if (raw === undefined || raw === "") return Result.succeed(false)
+  if (raw === "true" || raw === "1") return Result.succeed(true)
+  if (raw === "false" || raw === "0") return Result.succeed(false)
+  return Result.fail({ _tag: "InvalidVerboseFlag", received: raw })
 }

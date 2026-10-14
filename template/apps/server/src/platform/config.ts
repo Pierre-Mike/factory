@@ -3,13 +3,13 @@
  * object handed to `fetch`, so this decodes that object with a Schema. A malformed env fails the
  * first request loudly with a ParseError instead of half-working.
  */
-import { Schema as S } from "effect"
+import { Effect, Schema as S } from "effect"
 
 const Env = S.Struct({
-  APP_VERSION: S.optionalWith(S.String, { default: () => "0.0.0" }),
-  ENVIRONMENT: S.optionalWith(S.Literal("development", "production"), {
-    default: () => "development" as const,
-  }),
+  APP_VERSION: S.String.pipe(S.withDecodingDefaultType(Effect.succeed("0.0.0"))),
+  ENVIRONMENT: S.Literals(["development", "production"]).pipe(
+    S.withDecodingDefaultType(Effect.succeed("development" as const)),
+  ),
 })
 
 export interface AppConfig {

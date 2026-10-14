@@ -23,13 +23,16 @@ shared/                        # effect Schema contracts used by server and web
 
 ## The impureim sandwich
 
-- `*.core.ts` is pure. Failures are values: `Either`, `Option`, or `Data` tagged unions. No
-  `Effect`, `Layer`, `Context`, async, I/O or clock. `Either`, `Option`, `Data` and `Schema` from
-  `effect` are allowed.
-- `*.io.ts` and `*.routes.ts` use Effect. Services are `Context.Tag`s, wiring is `Layer`s, and the
-  runtime is a `ManagedRuntime` built in `platform/runtime.ts`.
-- A route reads through the io service, calls the pure core, and responds. An `Either` from the
-  core is `yield*`-ed inside `Effect.gen`, so a `Left` short-circuits as a typed failure.
+- `*.core.ts` is pure. Failures are values: `Result`, `Option`, or `Data` tagged unions. No
+  `Effect`, `Layer`, `Context`, async, I/O or clock. `Result`, `Option`, `Data` and `Schema` from
+  `effect` are allowed. (Effect 4 renamed v3's `Either` to `Result`: `Result.succeed`,
+  `Result.fail`, `Result.isFailure`.)
+- `*.io.ts` and `*.routes.ts` use Effect. Services are `Context.Service`s, wiring is `Layer`s, and
+  the runtime is a `ManagedRuntime` built in `platform/runtime.ts`.
+- A route reads through the io service, calls the pure core, and responds. The core's `Result` is
+  lifted at the boundary with `yield* Effect.fromResult(core(...))`, so a failure short-circuits as
+  a typed error. A bare `yield* core(...)` does not typecheck in Effect 4, so `tsc` catches a
+  missing lift.
 
 ## Rules (each one is enforced by a tool)
 

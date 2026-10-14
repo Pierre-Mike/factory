@@ -10,7 +10,9 @@ export const makeAppRuntime = (deps: AppDeps) =>
   ManagedRuntime.make(
     Layer.mergeAll(
       HealthClockLive(deps),
-      deps.config.environment === "production" ? Logger.json : Logger.pretty,
+      Logger.layer([
+        deps.config.environment === "production" ? Logger.consoleJson : Logger.consolePretty(),
+      ]),
     ),
   )
 

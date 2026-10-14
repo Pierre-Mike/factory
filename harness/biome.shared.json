@@ -163,7 +163,7 @@
                       "ManagedRuntime",
                       "Runtime"
                     ],
-                    "message": "Functional core must stay pure: model failures as Either/Option/Data. The Effect runtime lives in *.io.ts and *.routes.ts. Either, Option, Data and Schema are allowed here."
+                    "message": "Functional core must stay pure: model failures as Result/Option/Data. The Effect runtime lives in *.io.ts and *.routes.ts. Result, Option, Data and Schema are allowed here."
                   }
                 },
                 "patterns": [

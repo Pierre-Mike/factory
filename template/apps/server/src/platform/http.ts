@@ -5,7 +5,7 @@
  * status. An unregistered tag, or a defect caught by `onUnexpectedError`, becomes a redacted
  * `InternalServerError` 500 and the real error is logged. Forgetting to register a tag fails safe.
  */
-import { Effect, type ManagedRuntime } from "effect"
+import { Effect, type ManagedRuntime, Result } from "effect"
 import type { Context, ErrorHandler } from "hono"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 
@@ -41,15 +41,15 @@ export const respond = async <A, E extends TaggedError, R>(input: {
   readonly program: Effect.Effect<A, E, R>
   readonly status?: ContentfulStatusCode
 }) => {
-  const result = await input.runtime.runPromise(Effect.either(input.program))
-  if (result._tag === "Left") {
-    const { body, status } = errorEnvelope(result.left)
+  const result = await input.runtime.runPromise(Effect.result(input.program))
+  if (Result.isFailure(result)) {
+    const { body, status } = errorEnvelope(result.failure)
     return input.c.json(body, status)
   }
-  return input.c.json(result.right, input.status ?? 200)
+  return input.c.json(result.success, input.status ?? 200)
 }
 
-/** Defects (throws that bypass the Either boundary) get the same redact-and-log treatment. */
+/** Defects (throws that bypass the Result boundary) get the same redact-and-log treatment. */
 export const onUnexpectedError: ErrorHandler = (err, c) => {
   console.error("unexpected defect reached the http boundary:", err)
   return c.json({ ok: false as const, error: INTERNAL_SERVER_ERROR }, 500)

@@ -67,7 +67,7 @@ const EFFECT_RUNTIME = {
   effect: {
     importNames: ["Effect", "Layer", "Context", "ManagedRuntime", "Runtime"],
     message:
-      "Functional core must stay pure: model failures as Either/Option/Data. The Effect runtime lives in *.io.ts and *.routes.ts. Either, Option, Data and Schema are allowed here.",
+      "Functional core must stay pure: model failures as Result/Option/Data. The Effect runtime lives in *.io.ts and *.routes.ts. Result, Option, Data and Schema are allowed here.",
   },
 }
 

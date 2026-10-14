@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@app/shared": "workspace:*",
-    "effect": "^3.21.0",
+    "effect": "^4.0.4",
     "hono": "^4.12.32"
   },
   "devDependencies": {

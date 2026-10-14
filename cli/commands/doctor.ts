@@ -38,6 +38,19 @@ const featureSource = async (serverSrc: string): Promise<string> => {
   return parts.join("\n")
 }
 
+const effectRanges = (input: {
+  readonly root: string
+  readonly workspaces: ReadonlyArray<string>
+}) =>
+  input.workspaces.flatMap((workspace) => {
+    const manifest = readJson(join(input.root, workspace, "package.json"))
+    return ["dependencies", "devDependencies"].flatMap((kind) => {
+      const deps = isRecord(manifest) ? manifest[kind] : undefined
+      const range = isRecord(deps) ? deps.effect : undefined
+      return typeof range === "string" ? [{ workspace, range }] : []
+    })
+  })
+
 export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
   const pkg = readJson(join(root, "package.json"))
   const tsconfig = readJson(join(root, "tsconfig.json"))
@@ -62,6 +75,7 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
       readText(join(server, "src", "platform", "http.ts")) ?? "",
     ),
     featureSource: await featureSource(join(server, "src")),
+    effectRanges: effectRanges({ root, workspaces: [".", ...workspaceDirs({ root, pkg })] }),
   }
 }
 
