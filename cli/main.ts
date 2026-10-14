@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { check } from "./commands/check"
+import { dev } from "./commands/dev"
 import { doctor } from "./commands/doctor"
 import { newProject } from "./commands/new"
 import { slice } from "./commands/slice"
@@ -16,6 +17,7 @@ const HELP = `axioms ${harnessVersion()}
 
   axioms new <dir> [--harness <spec>]   create a project from the template
   axioms slice <feature> [--door]       add a feature slice
+  axioms dev                            wrangler dev (:8787) + vite (:5173)
   axioms check                          lint, typecheck, co-location, doctor, tests, dead code, dupes
   axioms smoke                          run smoke/ against a local wrangler dev
   axioms doctor                         check that every harness gate is wired
@@ -38,6 +40,9 @@ switch (command) {
     break
   case "check":
     exit(await check(root))
+    break
+  case "dev":
+    exit(await dev(root))
     break
   case "smoke":
     exit(await smoke(root))
