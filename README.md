@@ -10,7 +10,12 @@ cd my-app
 bun run check     # every gate
 bun run smoke     # the real worker over HTTP
 bun run slice x   # add a feature slice
+bun run deploy:dry  # bundle the worker + apply migrations locally (no Cloudflare account)
+bun run ci:dry      # replay ci.yml on a clean clone; pre-push runs it when CI/CD files change
 ```
+
+Every project's CI runs `check`, `smoke`, `deploy-dry-run` and `workflow-lint` (actionlint +
+zizmor). Locally the workflow linters come from `brew install actionlint zizmor`.
 
 ## What is in here
 
@@ -23,11 +28,11 @@ bun run slice x   # add a feature slice
 | `cli/` | The `axioms` command. Pure logic in `*.core.ts`, file and process work in `commands/`. |
 | `template/` | The app: Hono + Effect on Cloudflare Workers, D1, Vite + React + TanStack served as assets. |
 | `tests/rules.test.ts` | Lints fixtures through the shared config and checks each rule fires where it should. |
-| `tests/selftest.ts` | `new`, `check`, `slice`, `check`, `smoke` on a throwaway project. |
+| `tests/selftest.ts` | `new`, `sync`, `check`, `slice`, `smoke`, the deploy dry run and the CI dry run on a throwaway project, plus a deliberately broken workflow the CI dry run must catch. |
 
 ## How a project uses it
 
-A project depends on `@pierre-mike/axioms` (pinned by git tag) and owns only its app code:
+A project depends on `@pierre-mike/axioms`, pinned to a release tag (`github:Pierre-Mike/factory#v0.3.0`), and owns only its app code:
 
 - `biome.json` extends `@pierre-mike/axioms/biome` and may not add rules (`axioms doctor` checks).
 - `lefthook.yml` extends the harness hooks.

@@ -10,7 +10,9 @@
     "smoke": "axioms smoke",
     "slice": "axioms slice",
     "lint": "axioms biome check --write .",
-    "deploy": "bun run --cwd apps/web build && cd apps/server && bunx wrangler d1 migrations apply DB --remote && bunx wrangler deploy",
+    "deploy": "axioms deploy",
+    "deploy:dry": "axioms deploy --dry-run",
+    "ci:dry": "axioms ci-dry-run --all",
     "prepare": "axioms hooks"
   },
   "devDependencies": {}

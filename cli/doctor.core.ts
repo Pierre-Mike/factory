@@ -31,6 +31,8 @@ export interface DoctorInput {
   readonly featureSource: string
   /** The `effect` version range each workspace declares, e.g. `{ workspace: "shared", range: "^4.0.4" }`. */
   readonly effectRanges: ReadonlyArray<{ readonly workspace: string; readonly range: string }>
+  /** Set by the factory's own self-test (AXIOMS_ALLOW_LOCAL_HARNESS=1), which tests an unreleased harness. */
+  readonly allowLocalHarness: boolean
 }
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -104,17 +106,29 @@ const checkAgentDocs = (input: DoctorInput): Finding[] => {
   return findings
 }
 
-const checkPackage = (pkg: unknown): Finding[] => {
+const LOCAL_SPEC = /^(file|link|portal|workspace):/
+
+const checkPackage = (input: {
+  readonly pkg: unknown
+  readonly allowLocalHarness: boolean
+}): Finding[] => {
   const findings: Finding[] = []
-  const devDeps = field({ value: pkg, key: "devDependencies" })
-  if (field({ value: devDeps, key: HARNESS_PACKAGE }) === undefined) {
+  const devDeps = field({ value: input.pkg, key: "devDependencies" })
+  const spec = field({ value: devDeps, key: HARNESS_PACKAGE })
+  if (spec === undefined) {
     findings.push({
       rule: "package",
       problem: `${HARNESS_PACKAGE} is not a devDependency`,
       remedy: `bun add -d ${HARNESS_PACKAGE}`,
     })
+  } else if (typeof spec === "string" && LOCAL_SPEC.test(spec) && !input.allowLocalHarness) {
+    findings.push({
+      rule: "package",
+      problem: `${HARNESS_PACKAGE} is pinned to a local path (${spec}), which a CI runner cannot install`,
+      remedy: `pin a released tag: "github:Pierre-Mike/factory#vX.Y.Z"`,
+    })
   }
-  const scripts = field({ value: pkg, key: "scripts" })
+  const scripts = field({ value: input.pkg, key: "scripts" })
   for (const [name, command] of [
     ["check", "axioms check"],
     ["smoke", "axioms smoke"],
@@ -153,7 +167,12 @@ const checkCi = (ci: string | null): Finding[] => {
     ]
   }
   const findings: Finding[] = []
-  for (const command of ["axioms check", "axioms smoke"]) {
+  for (const command of [
+    "axioms check",
+    "axioms smoke",
+    "axioms deploy --dry-run",
+    "axioms lint-workflows",
+  ]) {
     if (!ci.includes(command)) {
       findings.push({
         rule: "ci",
@@ -211,7 +230,7 @@ export const runDoctor = (input: DoctorInput): Finding[] => [
   ...checkBiome(input.biome),
   ...checkLefthook(input.lefthook),
   ...checkAgentDocs(input),
-  ...checkPackage(input.pkg),
+  ...checkPackage(input),
   ...checkTypecheckGraph(input),
   ...checkCi(input.ciWorkflow),
   ...checkSmokeCoverage(input),

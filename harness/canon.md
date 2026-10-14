@@ -54,6 +54,16 @@ shared/                        # effect Schema contracts used by server and web
   `useSuspenseQuery` on the same options.
 - A slice may import another slice's `<feature>.door.ts` only, never its other files.
 - Commits follow `type(scope)?: subject`. The commit-msg hook rejects anything else.
+- A change to CI/CD is dry-run before it leaves the machine. When a push touches workflows,
+  `package.json`, `bun.lock`, `wrangler.jsonc`, migrations or other build config, the pre-push hook
+  runs `axioms ci-dry-run`: actionlint and zizmor on the workflows, then every job of `ci.yml`
+  replayed in a fresh clone of HEAD outside the project folder. A step it cannot reproduce fails
+  the dry run. Run it by hand with `bun run ci:dry`.
+- Every PR runs `axioms deploy --dry-run` (the worker bundled exactly as `wrangler deploy` would,
+  every migration applied to a fresh D1) and `axioms lint-workflows`. A real `axioms deploy`
+  refuses while placeholders remain in `wrangler.jsonc`.
+- The harness is pinned to a released tag (`github:Pierre-Mike/factory#vX.Y.Z`), never a local
+  path, because a CI runner cannot install a path that only exists on one machine.
 - `axioms doctor` fails when a part of this harness is missing or unwired.
 
 ## How to add a feature slice
@@ -77,6 +87,8 @@ bun run dev        # wrangler dev (API, :8787) + vite (web, :5173)
 bun run check      # lint, typecheck, co-location, doctor, tests, dead code and duplication
 bun run smoke      # build the web app, start wrangler dev locally, run smoke/ over HTTP
 bun run slice      # generate a feature slice
-bun run deploy     # apply D1 migrations remotely, then wrangler deploy
+bun run deploy:dry # bundle the worker and apply migrations locally, no Cloudflare account needed
+bun run ci:dry     # replay ci.yml on a clean clone (pre-push does this for CI/CD changes)
+bun run deploy     # refuse on placeholders, dry-run, apply D1 migrations remotely, wrangler deploy
 bunx axioms sync   # rewrite this section and the hook config from the installed harness
 ```

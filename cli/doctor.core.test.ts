@@ -18,16 +18,17 @@ const healthy: DoctorInput = {
   agentsMd: writeCanon({ agentsMd: "# App", canon: "the rules" }),
   claudeMd: "@AGENTS.md\n",
   pkg: {
-    devDependencies: { [HARNESS_PACKAGE]: "file:../factory" },
+    devDependencies: { [HARNESS_PACKAGE]: "github:Pierre-Mike/factory#v0.3.0" },
     scripts: { check: "axioms check", smoke: "axioms smoke" },
   },
   workspaceDirs: ["apps/server", "shared"],
   tsconfigReferences: ["./apps/server", "./shared"],
-  ciWorkflow: `steps:\n  - uses: actions/checkout@${SHA} # v6\n  - run: bunx axioms check\n  - run: bunx axioms smoke\n`,
+  ciWorkflow: `steps:\n  - uses: actions/checkout@${SHA} # v6\n  - run: bunx axioms check\n  - run: bunx axioms smoke\n  - run: bunx axioms deploy --dry-run\n  - run: bunx axioms lint-workflows\n`,
   featureNames: ["health"],
   smokeFiles: ["health.smoke.test.ts"],
   allowlistedTags: ["InvalidVerboseFlag"],
   featureSource: 'return Result.fail({ _tag: "InvalidVerboseFlag" })',
+  allowLocalHarness: false,
   effectRanges: [
     { workspace: "shared", range: "^4.0.4" },
     { workspace: "apps/server", range: "4.0.4" },
@@ -71,6 +72,15 @@ describe("runDoctor", () => {
     ).toEqual(["package"])
   })
 
+  it("flags a harness pinned to a local path, unless the self-test allows it", () => {
+    const local = {
+      devDependencies: { [HARNESS_PACKAGE]: "file:../factory" },
+      scripts: { check: "axioms check", smoke: "axioms smoke" },
+    }
+    expect(rules({ ...healthy, pkg: local })).toEqual(["package"])
+    expect(rules({ ...healthy, pkg: local, allowLocalHarness: true })).toEqual([])
+  })
+
   it("flags a workspace outside the tsc -b graph", () => {
     expect(rules({ ...healthy, workspaceDirs: ["apps/server", "apps/web", "shared"] })).toEqual([
       "typecheck",
@@ -79,7 +89,7 @@ describe("runDoctor", () => {
 
   it("flags a CI workflow that skips a gate or uses an unpinned action", () => {
     expect(rules({ ...healthy, ciWorkflow: null })).toEqual(["ci"])
-    expect(rules({ ...healthy, ciWorkflow: "run: bunx axioms check" })).toEqual(["ci"])
+    expect(rules({ ...healthy, ciWorkflow: "run: bunx axioms check" })).toEqual(["ci", "ci", "ci"])
     expect(
       rules({
         ...healthy,

@@ -14,6 +14,11 @@ commit-msg:
       run: bunx axioms commit-msg {1}
 
 pre-push:
+  piped: true
   jobs:
     - name: check
       run: bunx axioms check
+    # Replays ci.yml on a clean clone when the push touches CI/CD files (workflows, manifests,
+    # lockfile, wrangler config, migrations). Other pushes skip it in well under a second.
+    - name: ci-dry-run
+      run: bunx axioms ci-dry-run

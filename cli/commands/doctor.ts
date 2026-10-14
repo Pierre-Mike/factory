@@ -75,6 +75,7 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
       readText(join(server, "src", "platform", "http.ts")) ?? "",
     ),
     featureSource: await featureSource(join(server, "src")),
+    allowLocalHarness: process.env.AXIOMS_ALLOW_LOCAL_HARNESS === "1",
     effectRanges: effectRanges({ root, workspaces: [".", ...workspaceDirs({ root, pkg })] }),
   }
 }
