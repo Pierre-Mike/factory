@@ -24,7 +24,10 @@ export interface DoctorInput {
   readonly pkg: unknown
   readonly workspaceDirs: ReadonlyArray<string>
   readonly tsconfigReferences: ReadonlyArray<string>
-  readonly ciWorkflow: string | null
+  /** Every biome.json or biome.jsonc below the project root (paths relative to it). */
+  readonly nestedBiomeConfigs: ReadonlyArray<string>
+  /** The parsed ci.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
+  readonly ciWorkflow: unknown
   readonly featureNames: ReadonlyArray<string>
   readonly smokeFiles: ReadonlyArray<string>
   readonly allowlistedTags: ReadonlyArray<string>
@@ -46,7 +49,50 @@ const strings = (value: unknown): string[] =>
 
 const BIOME_KEYS_ALLOWED = new Set(["$schema", "extends", "files", "vcs"])
 
-const checkBiome = (biome: unknown): Finding[] => {
+/** The only `files.includes` a project may set: everything, minus build output and generated code. */
+export const BIOME_FILE_INCLUDES: ReadonlyArray<string> = [
+  "**",
+  "!**/dist",
+  "!**/node_modules",
+  "!**/.wrangler",
+  "!**/routeTree.gen.ts",
+]
+
+const checkBiomeFiles = (files: unknown): Finding[] => {
+  if (files === undefined) return []
+  const includes = field({ value: files, key: "includes" })
+  const extraKeys = isRecord(files) ? Object.keys(files).filter((key) => key !== "includes") : []
+  const entries = strings(includes)
+  const narrowing = entries.filter((entry) => !BIOME_FILE_INCLUDES.includes(entry))
+  const valid =
+    isRecord(files) &&
+    extraKeys.length === 0 &&
+    Array.isArray(includes) &&
+    entries.length === includes.length &&
+    entries.includes("**") &&
+    narrowing.length === 0
+  return valid
+    ? []
+    : [
+        {
+          rule: "biome",
+          problem: `biome.json narrows which files are linted${narrowing.length > 0 ? ` (${narrowing.join(", ")})` : ""}`,
+          remedy:
+            "run `bunx axioms sync`; ignore generated files through .gitignore, or add the path to BIOME_FILE_INCLUDES in the factory",
+        },
+      ]
+}
+
+const checkBiome = (input: {
+  readonly biome: unknown
+  readonly nestedConfigs: ReadonlyArray<string>
+}): Finding[] => {
+  const nested = input.nestedConfigs.map((path) => ({
+    rule: "biome",
+    problem: `${path} is a nested Biome config, which can change the rules for its folder`,
+    remedy: `delete ${path}; change the rule in the harness (factory/harness/biome.rules.ts) instead`,
+  }))
+  const biome = input.biome
   if (!isRecord(biome)) {
     return [
       {
@@ -54,16 +100,19 @@ const checkBiome = (biome: unknown): Finding[] => {
         problem: "biome.json is missing or not valid JSON",
         remedy: "run `bunx axioms sync`",
       },
+      ...nested,
     ]
   }
-  const findings: Finding[] = []
-  if (!strings(biome.extends).includes(HARNESS_BIOME)) {
+  const findings: Finding[] = [...nested]
+  const extended = strings(biome.extends)
+  if (extended.length !== 1 || extended[0] !== HARNESS_BIOME) {
     findings.push({
       rule: "biome",
-      problem: `biome.json does not extend ${HARNESS_BIOME}`,
+      problem: `biome.json must extend ${HARNESS_BIOME} and nothing else (found: ${extended.join(", ") || "none"})`,
       remedy: "run `bunx axioms sync`",
     })
   }
+  findings.push(...checkBiomeFiles(biome.files))
   const extra = Object.keys(biome).filter((key) => !BIOME_KEYS_ALLOWED.has(key))
   if (extra.length > 0) {
     findings.push({
@@ -155,39 +204,55 @@ const checkTypecheckGraph = (input: DoctorInput): Finding[] => {
     }))
 }
 
-const PINNED_USES = /uses:\s*[^\s@]+@[0-9a-f]{40}\b/
-const checkCi = (ci: string | null): Finding[] => {
-  if (ci === null) {
+const CI_GATES = ["check", "smoke", "deploy --dry-run", "lint-workflows"]
+const PINNED_USES = /^([^\s@]+@[0-9a-f]{40}|\.\/.*)$/
+
+/** A step or job that may be skipped, or may fail without failing CI, does not count as a gate. */
+const optional = (node: Record<string, unknown>) =>
+  node.if !== undefined || (node["continue-on-error"] ?? false) !== false
+
+/** A `run:` line that is exactly the gate, so `|| true` or an `echo` does not count. */
+const runsGate = (input: { readonly run: string; readonly gate: string }) =>
+  input.run
+    .split("\n")
+    .map((line) => line.trim().replace(/^(bunx|bun x)\s+/, ""))
+    .includes(`axioms ${input.gate}`)
+
+const checkCi = (ci: unknown): Finding[] => {
+  if (ci === null || ci === undefined) {
     return [
       {
         rule: "ci",
-        problem: ".github/workflows/ci.yml is missing",
+        problem: `.github/workflows/ci.yml is ${ci === null ? "missing" : "not valid YAML"}`,
         remedy: "copy it from the factory template",
       },
     ]
   }
-  const findings: Finding[] = []
-  for (const command of [
-    "axioms check",
-    "axioms smoke",
-    "axioms deploy --dry-run",
-    "axioms lint-workflows",
-  ]) {
-    if (!ci.includes(command)) {
-      findings.push({
-        rule: "ci",
-        problem: `ci.yml never runs \`${command}\``,
-        remedy: `add a job that runs \`bunx ${command}\``,
-      })
-    }
-  }
-  const unpinned = ci
-    .split("\n")
-    .filter((line) => /^\s*-?\s*uses:/.test(line) && !PINNED_USES.test(line))
-  for (const line of unpinned) {
+  const jobsField = field({ value: ci, key: "jobs" })
+  const jobs = isRecord(jobsField) ? Object.values(jobsField).filter(isRecord) : []
+  const steps = jobs.flatMap((job) =>
+    (Array.isArray(job.steps) ? job.steps : [])
+      .filter(isRecord)
+      .map((step) => ({ step, counts: !optional(job) && !optional(step) })),
+  )
+  const findings: Finding[] = CI_GATES.filter(
+    (gate) =>
+      !steps.some(
+        ({ step, counts }) =>
+          counts && typeof step.run === "string" && runsGate({ run: step.run, gate }),
+      ),
+  ).map((gate) => ({
+    rule: "ci",
+    problem: `ci.yml never runs \`axioms ${gate}\` as a step that must pass`,
+    remedy: `add a step \`run: bunx axioms ${gate}\` with no if: or continue-on-error:`,
+  }))
+  const uses = [...jobs, ...steps.map(({ step }) => step)].flatMap((node) =>
+    typeof node.uses === "string" ? [node.uses] : [],
+  )
+  for (const action of uses.filter((u) => !PINNED_USES.test(u))) {
     findings.push({
       rule: "ci",
-      problem: `action not pinned to a commit SHA: ${line.trim()}`,
+      problem: `action not pinned to a commit SHA: ${action}`,
       remedy: "pin it to a full 40-character SHA with the version in a comment",
     })
   }
@@ -227,7 +292,7 @@ const checkEffectMajor = (input: DoctorInput): Finding[] =>
     }))
 
 export const runDoctor = (input: DoctorInput): Finding[] => [
-  ...checkBiome(input.biome),
+  ...checkBiome({ biome: input.biome, nestedConfigs: input.nestedBiomeConfigs }),
   ...checkLefthook(input.lefthook),
   ...checkAgentDocs(input),
   ...checkPackage(input),

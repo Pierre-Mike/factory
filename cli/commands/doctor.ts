@@ -51,6 +51,37 @@ const effectRanges = (input: {
     })
   })
 
+/** Biome configs below the root, tracked or not, skipping what .gitignore excludes. */
+const nestedBiomeConfigs = (root: string): string[] => {
+  const proc = Bun.spawnSync(
+    [
+      "git",
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "**/biome.json",
+      "**/biome.jsonc",
+    ],
+    { cwd: root, stdout: "pipe", stderr: "pipe" },
+  )
+  return proc.stdout
+    .toString()
+    .split("\n")
+    .filter((path) => path.includes("/"))
+}
+
+/** `null` when the file is missing, `undefined` when it is not valid YAML. */
+const readYaml = (path: string): unknown => {
+  const text = readText(path)
+  if (text === null) return null
+  try {
+    return Bun.YAML.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
 export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
   const pkg = readJson(join(root, "package.json"))
   const tsconfig = readJson(join(root, "tsconfig.json"))
@@ -68,7 +99,8 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     tsconfigReferences: refs.flatMap((ref) =>
       isRecord(ref) && typeof ref.path === "string" ? [ref.path] : [],
     ),
-    ciWorkflow: readText(join(root, ".github", "workflows", "ci.yml")),
+    nestedBiomeConfigs: nestedBiomeConfigs(root),
+    ciWorkflow: readYaml(join(root, ".github", "workflows", "ci.yml")),
     featureNames: listDir(join(server, "src", "features")),
     smokeFiles: listDir(join(server, "smoke")),
     allowlistedTags: parseAllowlistedTags(

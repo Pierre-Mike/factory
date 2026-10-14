@@ -32,7 +32,7 @@ zizmor). Locally the workflow linters come from `brew install actionlint zizmor`
 
 ## How a project uses it
 
-A project depends on `@pierre-mike/axioms`, pinned to a release tag (`github:Pierre-Mike/factory#v0.3.0`), and owns only its app code:
+A project depends on `@pierre-mike/axioms`, pinned to a release tag (`github:Pierre-Mike/factory#v0.4.0`), and owns only its app code:
 
 - `biome.json` extends `@pierre-mike/axioms/biome` and may not add rules (`axioms doctor` checks).
 - `lefthook.yml` extends the harness hooks.

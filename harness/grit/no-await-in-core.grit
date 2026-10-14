@@ -1,8 +1,7 @@
 language js
 
-// ts-axioms: the functional core is synchronous — no async, no I/O.
-// Scoped to *.core.ts via the biome.json override that loads this plugin.
-// (`Promise` as a global is banned separately via noRestrictedGlobals.)
+// The functional core is synchronous. Loaded for *.core.ts only (see biome.rules.ts). The
+// `Promise` global is banned there separately.
 `await $expr` where {
-  register_diagnostic(span=$expr, message="ts-axioms: *.core.ts must stay synchronous and I/O-free — do async work in *.io.ts and pass plain data into the core.")
+  register_diagnostic(span=$expr, message="axioms: *.core.ts must stay synchronous. Do async work in *.io.ts and pass plain data into the core.")
 }

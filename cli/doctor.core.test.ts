@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { writeCanon } from "./canon.core"
 import {
+  BIOME_FILE_INCLUDES,
   type DoctorInput,
   HARNESS_BIOME,
   HARNESS_LEFTHOOK,
@@ -11,9 +12,26 @@ import {
 
 const SHA = "df4cb1c069e1874edd31b4311f1884172cec0e10"
 
+const HEALTHY_JOBS = {
+  check: {
+    steps: [
+      { uses: `actions/checkout@${SHA}` },
+      { run: "bun install --frozen-lockfile" },
+      { run: "bunx axioms check" },
+    ],
+  },
+  rest: {
+    steps: [
+      { run: "bunx axioms smoke" },
+      { run: "bunx axioms deploy --dry-run" },
+      { run: "bunx axioms lint-workflows" },
+    ],
+  },
+}
+
 const healthy: DoctorInput = {
   canon: "the rules",
-  biome: { extends: [HARNESS_BIOME], files: { includes: ["**"] } },
+  biome: { extends: [HARNESS_BIOME], files: { includes: [...BIOME_FILE_INCLUDES] } },
   lefthook: { extends: [HARNESS_LEFTHOOK] },
   agentsMd: writeCanon({ agentsMd: "# App", canon: "the rules" }),
   claudeMd: "@AGENTS.md\n",
@@ -23,7 +41,8 @@ const healthy: DoctorInput = {
   },
   workspaceDirs: ["apps/server", "shared"],
   tsconfigReferences: ["./apps/server", "./shared"],
-  ciWorkflow: `steps:\n  - uses: actions/checkout@${SHA} # v6\n  - run: bunx axioms check\n  - run: bunx axioms smoke\n  - run: bunx axioms deploy --dry-run\n  - run: bunx axioms lint-workflows\n`,
+  nestedBiomeConfigs: [],
+  ciWorkflow: { jobs: HEALTHY_JOBS },
   featureNames: ["health"],
   smokeFiles: ["health.smoke.test.ts"],
   allowlistedTags: ["InvalidVerboseFlag"],
@@ -48,6 +67,27 @@ describe("runDoctor", () => {
       "biome",
     ])
     expect(rules({ ...healthy, biome: null })).toEqual(["biome"])
+  })
+
+  it("flags a biome.json that extends anything besides the harness", () => {
+    expect(rules({ ...healthy, biome: { extends: [HARNESS_BIOME, "./loose.json"] } })).toEqual([
+      "biome",
+    ])
+  })
+
+  it("flags a files block that hides code from the linter", () => {
+    const withFiles = (files: unknown) =>
+      rules({ ...healthy, biome: { extends: [HARNESS_BIOME], files } })
+    expect(withFiles(undefined)).toEqual([])
+    expect(withFiles({ includes: ["**", "!**/dist"] })).toEqual([])
+    expect(withFiles({ includes: ["**", "!**/features/**"] })).toEqual(["biome"])
+    expect(withFiles({ includes: ["apps/web/**"] })).toEqual(["biome"])
+    expect(withFiles({ includes: ["**"], maxSize: 1 })).toEqual(["biome"])
+    expect(withFiles({ includes: "**" })).toEqual(["biome"])
+  })
+
+  it("flags a nested Biome config", () => {
+    expect(rules({ ...healthy, nestedBiomeConfigs: ["apps/server/biome.json"] })).toEqual(["biome"])
   })
 
   it("flags unwired hooks", () => {
@@ -87,15 +127,77 @@ describe("runDoctor", () => {
     ])
   })
 
-  it("flags a CI workflow that skips a gate or uses an unpinned action", () => {
-    expect(rules({ ...healthy, ciWorkflow: null })).toEqual(["ci"])
-    expect(rules({ ...healthy, ciWorkflow: "run: bunx axioms check" })).toEqual(["ci", "ci", "ci"])
-    expect(
+  describe("ci.yml", () => {
+    const withSteps = (steps: unknown[]) =>
       rules({
         ...healthy,
-        ciWorkflow: `${healthy.ciWorkflow}  - uses: oven-sh/setup-bun@v2\n`,
-      }),
-    ).toEqual(["ci"])
+        ciWorkflow: {
+          jobs: {
+            ...HEALTHY_JOBS,
+            check: { steps },
+          },
+        },
+      })
+
+    it("flags a missing or unparseable workflow", () => {
+      expect(rules({ ...healthy, ciWorkflow: null })).toEqual(["ci"])
+      expect(rules({ ...healthy, ciWorkflow: undefined })).toEqual(["ci"])
+    })
+
+    it("flags each gate no job runs", () => {
+      expect(
+        rules({
+          ...healthy,
+          ciWorkflow: { jobs: { a: { steps: [{ run: "bunx axioms check" }] } } },
+        }),
+      ).toEqual(["ci", "ci", "ci"])
+    })
+
+    it("accepts the gate inside a multi-line run, with or without bunx", () => {
+      expect(withSteps([{ run: "bun install\naxioms check\n" }])).toEqual([])
+    })
+
+    it("does not count a gate mentioned in a comment, an echo or a name", () => {
+      expect(withSteps([{ name: "axioms check", run: "echo 'bunx axioms check'" }])).toEqual(["ci"])
+      expect(withSteps([{ run: "# bunx axioms check\ntrue" }])).toEqual(["ci"])
+    })
+
+    it("does not count a gate whose failure is ignored or that may be skipped", () => {
+      expect(withSteps([{ run: "bunx axioms check || true" }])).toEqual(["ci"])
+      expect(withSteps([{ run: "bunx axioms check", "continue-on-error": true }])).toEqual(["ci"])
+      expect(withSteps([{ run: "bunx axioms check", if: "false" }])).toEqual(["ci"])
+      expect(
+        rules({
+          ...healthy,
+          ciWorkflow: {
+            jobs: {
+              ...HEALTHY_JOBS,
+              check: { if: "false", steps: [{ run: "bunx axioms check" }] },
+            },
+          },
+        }),
+      ).toEqual(["ci"])
+    })
+
+    it("flags actions not pinned to a commit SHA, in steps and reusable workflows", () => {
+      expect(withSteps([{ uses: "oven-sh/setup-bun@v2" }, { run: "bunx axioms check" }])).toEqual([
+        "ci",
+      ])
+      expect(
+        rules({
+          ...healthy,
+          ciWorkflow: {
+            jobs: {
+              ...HEALTHY_JOBS,
+              reuse: { uses: "org/repo/.github/workflows/x.yml@main" },
+            },
+          },
+        }),
+      ).toEqual(["ci"])
+      expect(
+        withSteps([{ uses: "./.github/actions/local" }, { run: "bunx axioms check" }]),
+      ).toEqual([])
+    })
   })
 
   it("flags a feature without a smoke test", () => {

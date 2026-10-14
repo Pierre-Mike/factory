@@ -124,6 +124,26 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     expect: ["at most one parameter"],
   },
   {
+    path: "apps/server/src/platform/p2.ts",
+    code: "export const f = function (a: number, b: number) {\n  return a + b\n}\n",
+    expect: ["at most one parameter"],
+  },
+  {
+    path: "apps/server/src/platform/p3.ts",
+    code: "export default function (a: number, b: number) {\n  return a + b\n}\n",
+    expect: ["at most one parameter"],
+  },
+  {
+    path: "apps/server/src/platform/p4.ts",
+    code: "export function* f(a: number, b: number) {\n  yield a + b\n}\n",
+    expect: ["at most one parameter"],
+  },
+  {
+    path: "apps/server/src/platform/p5.ts",
+    code: "export const sorted = [2, 1].sort((a, b) => a - b)\n\nexport const w = {\n  fetch(a: number, b: number) {\n    return a + b\n  },\n}\n",
+    expect: [],
+  },
+  {
     path: "apps/web/src/lib/q.ts",
     code: "export const f = async (r: Response) => (await r.json()) as { a: 1 }\n",
     expect: ["casting .json()"],
@@ -172,6 +192,12 @@ describe("harness/biome.shared.json is the committed output of biome.rules.ts", 
   it("is fresh (run `bun run build:biome`)", async () => {
     const committed = await Bun.file(join(PKG_ROOT, "harness", "biome.shared.json")).text()
     expect(committed).toBe(renderBiomeConfig())
+  })
+})
+
+describe("plugin diagnostics", () => {
+  it("all point at a location", () => {
+    expect(diagnostics.filter((d) => d.message.includes("valid span"))).toEqual([])
   })
 })
 

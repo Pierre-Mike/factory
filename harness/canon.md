@@ -38,6 +38,9 @@ shared/                        # effect Schema contracts used by server and web
 
 - Biome bans `Effect`/`Layer`/`Context`, `*.io` and `*.door` imports, `Date`, `Promise`,
   `console` and timers in `*.core.ts`. Grit plugins ban `throw` and `await` there.
+- No `biome-ignore`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` outside tests. The
+  `suppressions` gate of `axioms check` fails on them. Fix the code, or change the rule in the
+  harness.
 - Functions you declare take at most one parameter. Pass an options object for more.
 - No raw `fetch` and no `axios`. The web app calls the server through `hc<AppType>`. Only
   `*.io.ts` may call `fetch`, for external services.
@@ -64,7 +67,9 @@ shared/                        # effect Schema contracts used by server and web
   refuses while placeholders remain in `wrangler.jsonc`.
 - The harness is pinned to a released tag (`github:Pierre-Mike/factory#vX.Y.Z`), never a local
   path, because a CI runner cannot install a path that only exists on one machine.
-- `axioms doctor` fails when a part of this harness is missing or unwired.
+- `axioms doctor` fails when a part of this harness is missing or unwired, when `biome.json` adds
+  rules, extends anything besides the harness or narrows `files.includes`, when a nested Biome
+  config exists, and when a CI gate is missing, skippable or allowed to fail.
 
 ## How to add a feature slice
 
@@ -84,7 +89,7 @@ shared/                        # effect Schema contracts used by server and web
 ```bash
 bun install        # installs dependencies and git hooks
 bun run dev        # wrangler dev (API, :8787) + vite (web, :5173)
-bun run check      # lint, typecheck, co-location, doctor, tests, dead code and duplication
+bun run check      # lint, typecheck, co-location, suppressions, doctor, tests, dead code, duplication
 bun run smoke      # build the web app, start wrangler dev locally, run smoke/ over HTTP
 bun run slice      # generate a feature slice
 bun run deploy:dry # bundle the worker and apply migrations locally, no Cloudflare account needed

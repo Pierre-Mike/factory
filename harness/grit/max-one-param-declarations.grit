@@ -1,27 +1,20 @@
 language js
 
-// ts-axioms: named/exported declarations take at most one parameter — beyond
-// that, pass a single options object so the signature stays narrow as the
-// implementation deepens. Scoped to declaration position ONLY: function
-// declarations (`function f(a, b)`, `export function f(a, b)`) and
-// const-bound arrow functions (`const f = (a, b) => ...`,
-// `export const f = (a, b) => ...`). Deliberately does NOT match inline
-// function expressions/arrows passed directly as call arguments — those
-// signatures are dictated by the callee, not designed by this codebase
-// (`[].sort((a, b) => ...)`, `[].reduce((acc, x) => ...)`, Hono middleware
-// `app.use((c, next) => ...)`), so flagging them would fight APIs this repo
-// doesn't control. Six branches cover with/without a return-type annotation
-// (`): T`) for each of the three declaration shapes; `$params <: [$p1, $p2,
-// ...$rest]` matches 2-or-more parameters (an exact list-arity match, not a
-// numeric comparison — this dialect has no length()/arithmetic in `where`).
+// Functions this codebase declares take at most one parameter: pass an options object for more.
+// Only declarations match. Callbacks passed inline (`[].sort((a, b) => ...)`, Hono's
+// `(c, next) => ...`) and methods keep the shape their caller dictates. `[$p1, $p2, ...]` matches
+// two or more parameters. The span is the second parameter, because an anonymous function has no
+// `$name` to point at.
 or {
   `function $name($params) { $body }`,
   `function $name($params): $ret { $body }`,
+  `function* $name($params) { $body }`,
   `export function $name($params) { $body }`,
   `export function $name($params): $ret { $body }`,
+  `export default function ($params) { $body }`,
   `const $name = ($params) => $body`,
   `const $name = ($params): $ret => $body`
 } where {
   $params <: [$p1, $p2, ...],
-  register_diagnostic(span=$name, message="ts-axioms: named/exported declarations take at most one parameter — pass a single options object instead (useMaxParams applies to signatures you design, not callback shapes dictated by a callee like Array#sort/#reduce or Hono middleware).")
+  register_diagnostic(span=$p2, message="axioms: a function you declare takes at most one parameter. Pass a single options object instead. Inline callbacks such as Array#sort or Hono middleware are exempt.")
 }

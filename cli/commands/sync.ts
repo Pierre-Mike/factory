@@ -5,16 +5,8 @@
  */
 import { join } from "node:path"
 import { writeCanon } from "../canon.core"
-import { HARNESS_BIOME, HARNESS_LEFTHOOK, isRecord } from "../doctor.core"
-import { HARNESS_DIR, readJson, readText, run, toolPath } from "../shell"
-
-const DEFAULT_INCLUDES = [
-  "**",
-  "!**/dist",
-  "!**/node_modules",
-  "!**/.wrangler",
-  "!**/routeTree.gen.ts",
-]
+import { BIOME_FILE_INCLUDES, HARNESS_BIOME, HARNESS_LEFTHOOK } from "../doctor.core"
+import { HARNESS_DIR, readText, run, toolPath } from "../shell"
 
 export const sync = async (root: string): Promise<void> => {
   const canon = readText(join(HARNESS_DIR, "canon.md")) ?? ""
@@ -28,18 +20,15 @@ export const sync = async (root: string): Promise<void> => {
     await Bun.write(claudePath, `@AGENTS.md\n${claude === "" ? "" : `\n${claude}`}`)
   }
 
-  const biomePath = join(root, "biome.json")
-  const biome = readJson(biomePath)
-  const files =
-    isRecord(biome) && isRecord(biome.files) ? biome.files : { includes: DEFAULT_INCLUDES }
+  // `files` is rewritten too: a project-specific include list could hide code from the linter.
   await Bun.write(
-    biomePath,
+    join(root, "biome.json"),
     `${JSON.stringify(
       {
         $schema: "./node_modules/@biomejs/biome/configuration_schema.json",
         extends: [HARNESS_BIOME],
         vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },
-        files,
+        files: { includes: BIOME_FILE_INCLUDES },
       },
       null,
       2,

@@ -22,7 +22,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms new <dir> [--harness <spec>]   create a project from the template
   axioms slice <feature> [--door]       add a feature slice
   axioms dev                            wrangler dev (:8787) + vite (:5173)
-  axioms check                          lint, typecheck, co-location, doctor, tests, dead code, dupes
+  axioms check                          lint, typecheck, co-location, suppressions, doctor, tests, dead code, dupes
   axioms smoke                          run smoke/ against a local wrangler dev
   axioms deploy [--dry-run]             bundle + migrate locally; without --dry-run, deploy for real
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
