@@ -1,0 +1,17 @@
+language js
+
+// ts-axioms: contracts decode at the boundary — casting `.json()` asserts a
+// shape without validating it, so contract drift compiles forever and fails
+// silently at runtime (this exact cast neutralized a descendant repo's typed
+// RPC). Decode with the shared Schema helpers (`decode*` in shared/src)
+// instead, so drift fails loudly at the boundary. Branches cover the direct,
+// awaited, and parenthesized forms of `$x.json() as $t`. Registered for
+// non-test files only (see biome.json): tests may cast to assert raw shapes.
+or {
+  `$x.json() as $t`,
+  `await $x.json() as $t`,
+  `($x.json()) as $t`,
+  `(await $x.json()) as $t`
+} where {
+  register_diagnostic(span=$t, message="ts-axioms: casting .json() asserts without validating — decode with the shared Schema helpers (decode* in shared/src) so contract drift fails loudly at the boundary.")
+}

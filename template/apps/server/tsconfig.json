@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "types": ["bun"], "outDir": "dist", "rootDir": "." },
+  "references": [{ "path": "../../shared" }],
+  "include": ["src", "smoke"]
+}

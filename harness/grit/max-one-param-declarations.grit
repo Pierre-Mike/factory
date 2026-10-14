@@ -1,0 +1,27 @@
+language js
+
+// ts-axioms: named/exported declarations take at most one parameter — beyond
+// that, pass a single options object so the signature stays narrow as the
+// implementation deepens. Scoped to declaration position ONLY: function
+// declarations (`function f(a, b)`, `export function f(a, b)`) and
+// const-bound arrow functions (`const f = (a, b) => ...`,
+// `export const f = (a, b) => ...`). Deliberately does NOT match inline
+// function expressions/arrows passed directly as call arguments — those
+// signatures are dictated by the callee, not designed by this codebase
+// (`[].sort((a, b) => ...)`, `[].reduce((acc, x) => ...)`, Hono middleware
+// `app.use((c, next) => ...)`), so flagging them would fight APIs this repo
+// doesn't control. Six branches cover with/without a return-type annotation
+// (`): T`) for each of the three declaration shapes; `$params <: [$p1, $p2,
+// ...$rest]` matches 2-or-more parameters (an exact list-arity match, not a
+// numeric comparison — this dialect has no length()/arithmetic in `where`).
+or {
+  `function $name($params) { $body }`,
+  `function $name($params): $ret { $body }`,
+  `export function $name($params) { $body }`,
+  `export function $name($params): $ret { $body }`,
+  `const $name = ($params) => $body`,
+  `const $name = ($params): $ret => $body`
+} where {
+  $params <: [$p1, $p2, ...],
+  register_diagnostic(span=$name, message="ts-axioms: named/exported declarations take at most one parameter — pass a single options object instead (useMaxParams applies to signatures you design, not callback shapes dictated by a callee like Array#sort/#reduce or Hono middleware).")
+}

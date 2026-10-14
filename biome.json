@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["**", "!template", "!harness/biome.shared.json", "!tests/fixtures"] },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "javascript": {
+    "formatter": { "quoteStyle": "double", "semicolons": "asNeeded", "trailingCommas": "all" }
+  },
+  "plugins": ["./harness/grit/max-one-param-declarations.grit"],
+  "linter": {
+    "enabled": true,
+    "rules": { "recommended": true, "suspicious": { "noExplicitAny": "error" } }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.core.ts"],
+      "plugins": ["./harness/grit/no-throw-in-core.grit", "./harness/grit/no-await-in-core.grit"]
+    }
+  ]
+}

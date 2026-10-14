@@ -1,0 +1,17 @@
+{
+  "name": "__APP_NAME__",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.6",
+  "workspaces": ["apps/*", "shared"],
+  "scripts": {
+    "dev": "bun --filter '@app/server' --filter '@app/web' dev",
+    "check": "axioms check",
+    "smoke": "axioms smoke",
+    "slice": "axioms slice",
+    "lint": "axioms biome check --write .",
+    "deploy": "bun run --cwd apps/web build && cd apps/server && bunx wrangler d1 migrations apply DB --remote && bunx wrangler deploy",
+    "prepare": "axioms hooks"
+  },
+  "devDependencies": {}
+}

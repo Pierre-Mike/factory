@@ -1,0 +1,19 @@
+# Shared git hooks. A project's lefthook.yml extends this file; `bunx axioms sync` writes that.
+
+pre-commit:
+  piped: true
+  jobs:
+    - name: biome
+      glob: "*.{ts,tsx,js,jsx,json,jsonc}"
+      run: bunx axioms biome check --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: conventional-commit
+      run: bunx axioms commit-msg {1}
+
+pre-push:
+  jobs:
+    - name: check
+      run: bunx axioms check

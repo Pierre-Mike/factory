@@ -1,0 +1,39 @@
+{
+  "name": "@pierre-mike/axioms",
+  "version": "0.1.0",
+  "description": "Harness, CLI and app template for agent-built TypeScript apps on Cloudflare Workers",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "axioms": "./cli/main.ts"
+  },
+  "exports": {
+    "./biome": "./harness/biome.shared.json",
+    "./tsconfig": "./harness/tsconfig.base.json",
+    "./lefthook": "./harness/lefthook.yml"
+  },
+  "files": [
+    "cli",
+    "harness",
+    "template",
+    "!**/*.test.ts"
+  ],
+  "scripts": {
+    "build:biome": "bun run harness/biome.rules.ts",
+    "lint": "biome check --write .",
+    "test": "bun test cli harness tests",
+    "typecheck": "tsc --noEmit",
+    "selftest": "bun run tests/selftest.ts",
+    "verify": "biome ci . && tsc --noEmit && bun run test"
+  },
+  "dependencies": {
+    "@biomejs/biome": "2.4.16",
+    "fallow": "2.90.0",
+    "lefthook": "2.1.9",
+    "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "fast-check": "^4.8.0"
+  }
+}

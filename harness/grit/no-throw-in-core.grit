@@ -1,0 +1,7 @@
+language js
+
+// ts-axioms: the functional core never throws — failures are VALUES.
+// Scoped to *.core.ts via the biome.json override that loads this plugin.
+`throw $expr` where {
+  register_diagnostic(span=$expr, message="ts-axioms: *.core.ts must not throw — return Either.left / Option.none / a Data tagged union instead (failures are values).")
+}
