@@ -48,8 +48,9 @@ shared/                        # effect Schema contracts used by server and web
 - The app runs on Cloudflare Workers. `process` and `Bun` are banned in app code. Bun APIs are
   allowed only in `*.bun.ts` adapters, tests and tooling. Tooling means `scripts/`, `smoke/` and
   `*.config.ts` outside `src/`: anything under `src/` ships, whatever its name.
-- A Grit plugin bans reaching `fetch`, `process` or `Bun` through `globalThis`, `self` or `window`.
-  Use the bare name, so the rules for the file's shape apply.
+- A Grit plugin bans reaching any of these banned globals (`fetch`, `process`, `Bun`, and the core
+  bans such as `Date` and `crypto`) through `globalThis`, `self` or `window`. Use the bare name, so
+  the rules for the file's shape apply.
 - Every `*.core.ts` has a sibling `*.core.test.ts`. Use fast-check for non-trivial pure logic.
 - Configuration is decoded once from the Worker env in `platform/config.ts` with a Schema.
 - Database rows are `unknown` until decoded with a Schema in the slice's `*.io.ts`.

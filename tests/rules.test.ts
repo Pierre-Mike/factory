@@ -10,7 +10,7 @@ import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { PKG_ROOT, toolPath } from "../cli/shell"
-import { renderBiomeConfig } from "../harness/biome.rules"
+import { CORE_GLOBALS, factoryBiomeConfig, renderBiomeConfig } from "../harness/biome.rules"
 
 interface Fixture {
   readonly path: string
@@ -83,6 +83,16 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     code: 'export const f = () => globalThis.fetch("https://example.com")\n',
     expect: ["through globalThis"],
   },
+  {
+    path: `${F}/s2/s2.core.ts`,
+    code: "export const now = () => globalThis.Date.now()\n",
+    expect: ["through globalThis"],
+  },
+  {
+    path: `${F}/s3/s3.core.ts`,
+    code: 'export const id = () => self["crypto"].randomUUID()\n',
+    expect: ["through globalThis"],
+  },
   // slice shell files
   {
     path: `${F}/h/h.routes.ts`,
@@ -105,8 +115,23 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     expect: ["sibling slice"],
   },
   {
+    path: `${F}/k2/k2.routes.ts`,
+    code: 'import { x } from "../../features/other/other.core"\n\nexport const y = x\n',
+    expect: ["sibling slice"],
+  },
+  {
+    path: `${F}/k3/k3.routes.ts`,
+    code: 'import { x } from "./../other/other.io"\n\nexport const y = x\n',
+    expect: ["sibling slice"],
+  },
+  {
     path: `${F}/l/l.routes.ts`,
     code: 'import { x } from "../other/other.door"\n\nexport const y = x\n',
+    expect: [],
+  },
+  {
+    path: `${F}/l2/l2.routes.ts`,
+    code: 'import { x } from "../../platform/http"\nimport { y } from "./l2.core"\n\nexport const z = [x, y]\n',
     expect: [],
   },
   // runtime neutrality
@@ -216,6 +241,21 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     expect: ["at most one parameter"],
   },
   {
+    path: "apps/server/src/platform/p8.ts",
+    code: "export const f = async (a: number, b: number): Promise<number> => a + b\n",
+    expect: ["at most one parameter"],
+  },
+  {
+    path: "apps/server/src/platform/p6.ts",
+    code: "export let f = (a: number, b: number) => a + b\nf = (a, b) => a - b\n",
+    expect: ["at most one parameter"],
+  },
+  {
+    path: "apps/server/src/platform/p7.ts",
+    code: "export var f = (a: number, b: number): number => a + b\n",
+    expect: ["at most one parameter"],
+  },
+  {
     path: "apps/server/src/platform/p5.ts",
     code: "export const sorted = [2, 1].sort((a, b) => a - b)\n\nexport const w = {\n  fetch(a: number, b: number) {\n    return a + b\n  },\n}\n",
     expect: [],
@@ -265,10 +305,23 @@ beforeAll(async () => {
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
-describe("harness/biome.shared.json is the committed output of biome.rules.ts", () => {
-  it("is fresh (run `bun run build:biome`)", async () => {
+describe("the committed Biome configs are the output of biome.rules.ts", () => {
+  it("harness/biome.shared.json is fresh (run `bun run build:biome`)", async () => {
     const committed = await Bun.file(join(PKG_ROOT, "harness", "biome.shared.json")).text()
     expect(committed).toBe(renderBiomeConfig())
+  })
+
+  it("the factory's own biome.json is fresh (run `bun run build:biome`)", async () => {
+    const committed: unknown = await Bun.file(join(PKG_ROOT, "biome.json")).json()
+    expect(committed).toEqual(JSON.parse(JSON.stringify(factoryBiomeConfig)))
+  })
+})
+
+describe("grit/no-global-alias.grit", () => {
+  it("covers every global a file shape bans, so no ban can be reached through globalThis", async () => {
+    const grit = await Bun.file(join(PKG_ROOT, "harness", "grit", "no-global-alias.grit")).text()
+    const missing = Object.keys(CORE_GLOBALS).filter((name) => !grit.includes(`\`${name}\``))
+    expect(missing).toEqual([])
   })
 })
 

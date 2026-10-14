@@ -4,7 +4,8 @@ language js
 // Only declarations match. Callbacks passed inline (`[].sort((a, b) => ...)`, Hono's
 // `(c, next) => ...`) and methods keep the shape their caller dictates. `[$p1, $p2, ...]` matches
 // two or more parameters. The span is the second parameter, because an anonymous function has no
-// `$name` to point at.
+// `$name` to point at. Arrow functions match on the declarator (`$name = (...) => ...`), which
+// covers const, let and var alike: a `let $name = ...` snippet never matches in Biome's Grit.
 or {
   `function $name($params) { $body }`,
   `function $name($params): $ret { $body }`,
@@ -12,8 +13,8 @@ or {
   `export function $name($params) { $body }`,
   `export function $name($params): $ret { $body }`,
   `export default function ($params) { $body }`,
-  `const $name = ($params) => $body`,
-  `const $name = ($params): $ret => $body`
+  `$name = ($params) => $body`,
+  `$name = ($params): $ret => $body`
 } where {
   $params <: [$p1, $p2, ...],
   register_diagnostic(span=$p2, message="axioms: a function you declare takes at most one parameter. Pass a single options object instead. Inline callbacks such as Array#sort or Hono middleware are exempt.")

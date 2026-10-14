@@ -5,7 +5,7 @@ The harness, CLI and app template behind my agent-built apps. It replaces copyin
 project with a version bump.
 
 ```bash
-bun ~/Github/factory/cli/main.ts new my-app   # stamp, install, format, first commit
+bun ~/Github/factory/cli/main.ts new my-app   # stamp, pin v<version>, install, format, commit
 cd my-app
 bun run check     # every gate
 bun run smoke     # the real worker over HTTP
@@ -13,6 +13,9 @@ bun run slice x   # add a feature slice
 bun run deploy:dry  # bundle the worker + apply migrations locally (no Cloudflare account)
 bun run ci:dry      # replay ci.yml on a clean clone; pre-push runs it when CI/CD files change
 ```
+
+`new` pins the GitHub tag of the CLI's own version, so that tag must exist. To try an unreleased
+checkout, pass `--harness file:<path>` and set `AXIOMS_ALLOW_LOCAL_HARNESS=1`, as the selftest does.
 
 Every project's CI runs `check`, `smoke`, `deploy-dry-run` and `workflow-lint` (actionlint +
 zizmor). Locally the workflow linters come from `brew install actionlint zizmor`.

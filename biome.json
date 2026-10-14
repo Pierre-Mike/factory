@@ -1,20 +1,318 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "includes": ["**", "!template", "!harness/biome.shared.json", "!tests/fixtures"] },
-  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
   "javascript": {
-    "formatter": { "quoteStyle": "double", "semicolons": "asNeeded", "trailingCommas": "all" }
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "asNeeded",
+      "trailingCommas": "all"
+    }
   },
   "plugins": ["./harness/grit/max-one-param-declarations.grit"],
   "linter": {
     "enabled": true,
-    "rules": { "recommended": true, "suspicious": { "noExplicitAny": "error" } }
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["error", "warn"]
+          }
+        }
+      },
+      "style": {
+        "useConst": "error",
+        "noRestrictedGlobals": {
+          "level": "error",
+          "options": {
+            "deniedGlobals": {
+              "fetch": "web: use the typed Hono RPC client (hc<AppType>). server: call external services from a *.io.ts service, where fetch is allowed.",
+              "process": "The app runs on Cloudflare Workers, which has no process. Read configuration from the env object in platform/config.ts.",
+              "Bun": "Bun is the dev toolchain, not the runtime. Bun APIs are allowed only in *.bun.ts adapters, tests, and tooling."
+            }
+          }
+        },
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "axios": {
+                "message": "Use the typed Hono RPC client (hc<AppType>) instead of axios."
+              }
+            },
+            "patterns": [
+              {
+                "group": ["bun", "bun:*"],
+                "message": "Bun is the dev toolchain, not the runtime. Bun APIs are allowed only in *.bun.ts adapters, tests, and tooling."
+              }
+            ]
+          }
+        }
+      }
+    }
   },
   "overrides": [
     {
-      "includes": ["**/*.core.ts"],
-      "plugins": ["./harness/grit/no-throw-in-core.grit", "./harness/grit/no-await-in-core.grit"]
+      "includes": ["**/*.ts", "**/*.tsx", "!**/*.test.ts", "!**/*.test.tsx", "!**/*.spec.ts"],
+      "plugins": ["./harness/grit/no-cast-json.grit"]
+    },
+    {
+      "includes": [
+        "**/*.ts",
+        "**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.bun.ts"
+      ],
+      "plugins": ["./harness/grit/no-global-alias.grit"]
+    },
+    {
+      "includes": ["**/features/**", "!**/*.core.ts", "!**/*.core.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "axios": {
+                    "message": "Use the typed Hono RPC client (hc<AppType>) instead of axios."
+                  }
+                },
+                "patterns": [
+                  {
+                    "group": ["bun", "bun:*"],
+                    "message": "Bun is the dev toolchain, not the runtime. Bun APIs are allowed only in *.bun.ts adapters, tests, and tooling."
+                  },
+                  {
+                    "group": [
+                      "../**/*.core",
+                      "./../**/*.core",
+                      "../**/*.io",
+                      "./../**/*.io",
+                      "../**/*.routes",
+                      "./../**/*.routes",
+                      "../**/*.queries",
+                      "./../**/*.queries",
+                      "../**/*.route",
+                      "./../**/*.route"
+                    ],
+                    "message": "A feature slice must not reach into a sibling slice's internals. Import its published door (<feature>.door.ts) instead."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.core.ts", "**/*.core.tsx"],
+      "plugins": [
+        "./harness/grit/no-throw-in-core.grit",
+        "./harness/grit/no-await-in-core.grit",
+        "./harness/grit/no-random-in-core.grit"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "fetch": "web: use the typed Hono RPC client (hc<AppType>). server: call external services from a *.io.ts service, where fetch is allowed.",
+                  "process": "The app runs on Cloudflare Workers, which has no process. Read configuration from the env object in platform/config.ts.",
+                  "Bun": "Bun is the dev toolchain, not the runtime. Bun APIs are allowed only in *.bun.ts adapters, tests, and tooling.",
+                  "Date": "Functional core must not read the clock. Accept timestamps (epoch ms) as plain input from the shell.",
+                  "performance": "Functional core must not read the clock. Accept timestamps (epoch ms) as plain input from the shell.",
+                  "crypto": "Functional core must be deterministic. Generate ids and random values in the shell and pass them in.",
+                  "Promise": "Functional core must stay synchronous. Do async work in *.io.ts and pass plain data in.",
+                  "console": "Functional core must not perform I/O. Return values and let the shell log.",
+                  "setTimeout": "Functional core must not schedule work. Keep it synchronous data-in/data-out.",
+                  "setInterval": "Functional core must not schedule work. Keep it synchronous data-in/data-out."
+                }
+              }
+            },
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "axios": {
+                    "message": "Use the typed Hono RPC client (hc<AppType>) instead of axios."
+                  },
+                  "effect": {
+                    "importNames": ["Effect", "Layer", "Context", "ManagedRuntime", "Runtime"],
+                    "message": "Functional core must stay pure: model failures as Result/Option/Data. The Effect runtime lives in *.io.ts and *.routes.ts. Result, Option, Data and Schema are allowed here."
+                  }
+                },
+                "patterns": [
+                  {
+                    "group": ["bun", "bun:*"],
+                    "message": "Bun is the dev toolchain, not the runtime. Bun APIs are allowed only in *.bun.ts adapters, tests, and tooling."
+                  },
+                  {
+                    "group": [
+                      "../**/*.core",
+                      "./../**/*.core",
+                      "../**/*.io",
+                      "./../**/*.io",
+                      "../**/*.routes",
+                      "./../**/*.routes",
+                      "../**/*.queries",
+                      "./../**/*.queries",
+                      "../**/*.route",
+                      "./../**/*.route"
+                    ],
+                    "message": "A feature slice must not reach into a sibling slice's internals. Import its published door (<feature>.door.ts) instead."
+                  },
+                  {
+                    "group": ["**/*.io", "**/*.io.ts", "./*.io", "../**/*.io"],
+                    "message": "Functional core must not import an I/O service (*.io). Wire I/O in *.routes.ts and pass plain data in."
+                  },
+                  {
+                    "group": ["**/*.door", "**/*.door.ts", "./*.door", "../**/*.door"],
+                    "message": "A door re-exports a service Tag, which would pull the Effect runtime into pure code. Consume doors from *.routes.ts or *.io.ts."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.io.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "process": "The app runs on Cloudflare Workers, which has no process. Read configuration from the env object in platform/config.ts.",
+                  "Bun": "Bun is the dev toolchain, not the runtime. Bun APIs are allowed only in *.bun.ts adapters, tests, and tooling."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.bun.ts", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "fetch": "web: use the typed Hono RPC client (hc<AppType>). server: call external services from a *.io.ts service, where fetch is allowed.",
+                  "process": "The app runs on Cloudflare Workers, which has no process. Read configuration from the env object in platform/config.ts."
+                }
+              }
+            },
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "axios": {
+                    "message": "Use the typed Hono RPC client (hc<AppType>) instead of axios."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/src/worker.ts", "**/src/api.ts", "!**/src/*/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**/scripts/**",
+        "**/smoke/**",
+        "**/*.config.ts",
+        "**/worker-configuration.d.ts",
+        "!**/src/**"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {}
+              }
+            },
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "axios": {
+                    "message": "Use the typed Hono RPC client (hc<AppType>) instead of axios."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["cli/**", "tests/**", "harness/**", "!**/*.core.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {}
+              }
+            },
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "axios": {
+                    "message": "Use the typed Hono RPC client (hc<AppType>) instead of axios."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
-  ]
+  ],
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": ["**", "!template", "!harness/biome.shared.json"]
+  }
 }

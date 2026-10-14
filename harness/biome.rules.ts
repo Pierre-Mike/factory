@@ -1,6 +1,6 @@
 /**
- * Source of truth for harness/biome.shared.json. Run `bun run build:biome` after editing; a test fails
- * when the committed JSON is stale.
+ * Source of truth for harness/biome.shared.json and for the factory's own biome.json. Run
+ * `bun run build:biome` after editing; a test fails when either committed config is stale.
  *
  * Why a generator: a Biome override that sets a rule's options REPLACES the base options for that
  * rule, it does not merge them. Hand-written overrides therefore drop global denials (the
@@ -14,7 +14,6 @@
 
 /** Plugin paths resolve from the consuming project's root, not from this file. */
 const PLUGIN_DIR = "./node_modules/@pierre-mike/axioms/harness/grit"
-const plugin = (name: string) => `${PLUGIN_DIR}/${name}.grit`
 
 const FETCH =
   "web: use the typed Hono RPC client (hc<AppType>). server: call external services from a *.io.ts service, where fetch is allowed."
@@ -25,7 +24,8 @@ const BUN =
 
 const BASE_GLOBALS = { fetch: FETCH, process: PROCESS, Bun: BUN }
 
-const CORE_GLOBALS = {
+/** Every global banned in some file shape. grit/no-global-alias.grit bans reaching each one by alias. */
+export const CORE_GLOBALS = {
   ...BASE_GLOBALS,
   Date: "Functional core must not read the clock. Accept timestamps (epoch ms) as plain input from the shell.",
   performance:
@@ -48,8 +48,15 @@ const BUN_IMPORTS = {
   message: BUN,
 }
 
+/**
+ * A slice's internal files, by suffix. `../**` matches every path that leaves the slice folder,
+ * however it is spelled (`../other/other.core`, `../../features/other/other.core`), and `./../**`
+ * the same path with a leading `./`. Doors (`*.door`) stay importable.
+ */
+const SLICE_INTERNALS = ["core", "io", "routes", "queries", "route"]
+
 const CROSS_SLICE = {
-  group: ["../*/*.core", "../*/*.io", "../*/*.routes", "../*/*.queries", "../*/*.route"],
+  group: SLICE_INTERNALS.flatMap((kind) => [`../**/*.${kind}`, `./../**/*.${kind}`]),
   message:
     "A feature slice must not reach into a sibling slice's internals. Import its published door (<feature>.door.ts) instead.",
 }
@@ -105,88 +112,116 @@ const TOOLING = [
   `!${APP_CODE}`,
 ]
 
-export const biomeConfig = {
-  $schema: "https://biomejs.dev/schemas/2.4.16/schema.json",
-  formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 100 },
-  javascript: {
-    formatter: { quoteStyle: "double", semicolons: "asNeeded", trailingCommas: "all" },
+const TOOLING_LINTER = {
+  rules: {
+    suspicious: { noConsole: "off" },
+    style: { ...globals({}), ...imports({ paths: AXIOS, patterns: [] }) },
   },
-  plugins: [plugin("max-one-param-declarations")],
-  linter: {
-    enabled: true,
-    rules: {
-      recommended: true,
-      suspicious: {
-        noExplicitAny: "error",
-        noConsole: { level: "error", options: { allow: ["error", "warn"] } },
-      },
-      style: {
-        useConst: "error",
-        ...globals(BASE_GLOBALS),
-        ...imports({ paths: AXIOS, patterns: [BUN_IMPORTS] }),
-      },
+}
+
+const sharedConfig = (pluginDir: string) => {
+  const plugin = (name: string) => `${pluginDir}/${name}.grit`
+  return {
+    $schema: "https://biomejs.dev/schemas/2.4.16/schema.json",
+    formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 100 },
+    javascript: {
+      formatter: { quoteStyle: "double", semicolons: "asNeeded", trailingCommas: "all" },
     },
-  },
-  overrides: [
-    {
-      includes: ["**/*.ts", "**/*.tsx", ...TESTS.map((t) => `!${t}`)],
-      plugins: [plugin("no-cast-json")],
-    },
-    {
-      // Tooling is included on purpose: it may use the bare globals, so the alias is never needed.
-      includes: ["**/*.ts", "**/*.tsx", ...TESTS.map((t) => `!${t}`), "!**/*.bun.ts"],
-      plugins: [plugin("no-global-alias")],
-    },
-    {
-      includes: ["**/features/**", "!**/*.core.ts", "!**/*.core.tsx"],
-      ...style(imports({ paths: AXIOS, patterns: [BUN_IMPORTS, CROSS_SLICE] })),
-    },
-    {
-      includes: ["**/*.core.ts", "**/*.core.tsx"],
-      plugins: [
-        plugin("no-throw-in-core"),
-        plugin("no-await-in-core"),
-        plugin("no-random-in-core"),
-      ],
-      ...style({
-        ...globals(CORE_GLOBALS),
-        ...imports({
-          paths: { ...AXIOS, ...EFFECT_RUNTIME },
-          patterns: [BUN_IMPORTS, CROSS_SLICE, ...CORE_IMPORT_PATTERNS],
-        }),
-      }),
-    },
-    {
-      includes: ["**/*.io.ts"],
-      ...style(globals({ process: PROCESS, Bun: BUN })),
-    },
-    {
-      includes: ["**/*.bun.ts", ...TESTS],
-      ...style({
-        ...globals({ fetch: FETCH, process: PROCESS }),
-        ...imports({ paths: AXIOS, patterns: [] }),
-      }),
-    },
-    {
-      // Only the edge files at the root of src/: a features/x/api.ts keeps noConsole.
-      includes: ["**/src/worker.ts", "**/src/api.ts", "!**/src/*/**"],
-      linter: { rules: { suspicious: { noConsole: "off" } } },
-    },
-    {
-      includes: TOOLING,
-      linter: {
-        rules: {
-          suspicious: { noConsole: "off" },
-          style: { ...globals({}), ...imports({ paths: AXIOS, patterns: [] }) },
+    plugins: [plugin("max-one-param-declarations")],
+    linter: {
+      enabled: true,
+      rules: {
+        recommended: true,
+        suspicious: {
+          noExplicitAny: "error",
+          noConsole: { level: "error", options: { allow: ["error", "warn"] } },
+        },
+        style: {
+          useConst: "error",
+          ...globals(BASE_GLOBALS),
+          ...imports({ paths: AXIOS, patterns: [BUN_IMPORTS] }),
         },
       },
+    },
+    overrides: [
+      {
+        includes: ["**/*.ts", "**/*.tsx", ...TESTS.map((t) => `!${t}`)],
+        plugins: [plugin("no-cast-json")],
+      },
+      {
+        // Tooling is included on purpose: it may use the bare globals, so the alias is never needed.
+        includes: ["**/*.ts", "**/*.tsx", ...TESTS.map((t) => `!${t}`), "!**/*.bun.ts"],
+        plugins: [plugin("no-global-alias")],
+      },
+      {
+        includes: ["**/features/**", "!**/*.core.ts", "!**/*.core.tsx"],
+        ...style(imports({ paths: AXIOS, patterns: [BUN_IMPORTS, CROSS_SLICE] })),
+      },
+      {
+        includes: ["**/*.core.ts", "**/*.core.tsx"],
+        plugins: [
+          plugin("no-throw-in-core"),
+          plugin("no-await-in-core"),
+          plugin("no-random-in-core"),
+        ],
+        ...style({
+          ...globals(CORE_GLOBALS),
+          ...imports({
+            paths: { ...AXIOS, ...EFFECT_RUNTIME },
+            patterns: [BUN_IMPORTS, CROSS_SLICE, ...CORE_IMPORT_PATTERNS],
+          }),
+        }),
+      },
+      {
+        includes: ["**/*.io.ts"],
+        ...style(globals({ process: PROCESS, Bun: BUN })),
+      },
+      {
+        includes: ["**/*.bun.ts", ...TESTS],
+        ...style({
+          ...globals({ fetch: FETCH, process: PROCESS }),
+          ...imports({ paths: AXIOS, patterns: [] }),
+        }),
+      },
+      {
+        // Only the edge files at the root of src/: a features/x/api.ts keeps noConsole.
+        includes: ["**/src/worker.ts", "**/src/api.ts", "!**/src/*/**"],
+        linter: { rules: { suspicious: { noConsole: "off" } } },
+      },
+      { includes: TOOLING, linter: TOOLING_LINTER },
+    ],
+  }
+}
+
+export const biomeConfig = sharedConfig(PLUGIN_DIR)
+
+/**
+ * The factory lints itself with the shared rules, loading the plugins from this checkout. Its CLI,
+ * tests and generators run on Bun, so they are tooling; its `*.core.ts` files keep every core ban.
+ */
+const shared = sharedConfig("./harness/grit")
+export const factoryBiomeConfig = {
+  ...shared,
+  $schema: "./node_modules/@biomejs/biome/configuration_schema.json",
+  vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },
+  // The template is linted as a generated project by the selftest. `build:biome` formats this file
+  // after writing it; the shared JSON is excluded instead, since projects only read it.
+  files: { includes: ["**", "!template", "!harness/biome.shared.json"] },
+  overrides: [
+    ...shared.overrides,
+    {
+      includes: ["cli/**", "tests/**", "harness/**", "!**/*.core.ts"],
+      linter: TOOLING_LINTER,
     },
   ],
 }
 
-export const renderBiomeConfig = () => `${JSON.stringify(biomeConfig, null, 2)}\n`
+const render = (config: object) => `${JSON.stringify(config, null, 2)}\n`
+
+export const renderBiomeConfig = () => render(biomeConfig)
 
 if (import.meta.main) {
   await Bun.write(new URL("./biome.shared.json", import.meta.url), renderBiomeConfig())
-  console.error("wrote harness/biome.shared.json")
+  await Bun.write(new URL("../biome.json", import.meta.url), render(factoryBiomeConfig))
+  console.error("wrote harness/biome.shared.json and biome.json")
 }

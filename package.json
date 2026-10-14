@@ -19,7 +19,7 @@
     "!**/*.test.ts"
   ],
   "scripts": {
-    "build:biome": "bun run harness/biome.rules.ts",
+    "build:biome": "bun run harness/biome.rules.ts && biome format --write biome.json",
     "lint": "biome check --write .",
     "test": "bun test cli harness tests",
     "typecheck": "tsc --noEmit",

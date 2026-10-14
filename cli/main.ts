@@ -19,7 +19,8 @@ import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
 
 const HELP = `axioms ${harnessVersion()}
 
-  axioms new <dir> [--harness <spec>]   create a project from the template
+  axioms new <dir> [--harness <spec>] [--no-install]
+                                        create a project from the template (pins the release tag)
   axioms slice <feature> [--door]       add a feature slice
   axioms dev                            wrangler dev (:8787) + vite (:5173)
   axioms check                          lint, typecheck, co-location, suppressions, doctor, tests, dead code, dupes

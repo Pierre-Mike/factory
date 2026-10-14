@@ -119,11 +119,16 @@
                   },
                   {
                     "group": [
-                      "../*/*.core",
-                      "../*/*.io",
-                      "../*/*.routes",
-                      "../*/*.queries",
-                      "../*/*.route"
+                      "../**/*.core",
+                      "./../**/*.core",
+                      "../**/*.io",
+                      "./../**/*.io",
+                      "../**/*.routes",
+                      "./../**/*.routes",
+                      "../**/*.queries",
+                      "./../**/*.queries",
+                      "../**/*.route",
+                      "./../**/*.route"
                     ],
                     "message": "A feature slice must not reach into a sibling slice's internals. Import its published door (<feature>.door.ts) instead."
                   }
@@ -192,11 +197,16 @@
                   },
                   {
                     "group": [
-                      "../*/*.core",
-                      "../*/*.io",
-                      "../*/*.routes",
-                      "../*/*.queries",
-                      "../*/*.route"
+                      "../**/*.core",
+                      "./../**/*.core",
+                      "../**/*.io",
+                      "./../**/*.io",
+                      "../**/*.routes",
+                      "./../**/*.routes",
+                      "../**/*.queries",
+                      "./../**/*.queries",
+                      "../**/*.route",
+                      "./../**/*.route"
                     ],
                     "message": "A feature slice must not reach into a sibling slice's internals. Import its published door (<feature>.door.ts) instead."
                   },

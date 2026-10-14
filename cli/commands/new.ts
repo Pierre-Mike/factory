@@ -1,22 +1,19 @@
 /**
- * `axioms new <dir> [--harness <spec>]`: stamp a project from template/, pin the harness, and sync
- * the rules into it. The default harness spec is the GitHub tag of the running version; when the
- * CLI runs from a checkout (not from node_modules) it pins `file:` to that checkout instead.
+ * `axioms new <dir> [--harness <spec>] [--no-install]`: stamp a project from template/, pin the
+ * harness, and sync the rules into it. The default harness spec is the GitHub tag of the running
+ * version, also when the CLI runs from a checkout: `axioms doctor` rejects a local path, so a
+ * `file:` default would hand out a project that fails its first `check`.
  */
 import { existsSync } from "node:fs"
 import { cp, readdir } from "node:fs/promises"
 import { basename, join, relative, resolve } from "node:path"
 import { HARNESS_PACKAGE } from "../doctor.core"
-import { fail, harnessVersion, PKG_ROOT, run, runTool, TEMPLATE_DIR } from "../shell"
+import { parseNewArgs, releaseSpec } from "../new.core"
+import { fail, harnessVersion, run, runTool, TEMPLATE_DIR } from "../shell"
 import { sync } from "./sync"
 
 const TEXT = /\.(ts|tsx|json|jsonc|md|yml|yaml|html|sql|toml)$|^\.gitignore$/
 const SKIP = new Set(["node_modules", "dist", ".wrangler", "bun.lock"])
-
-const defaultSpec = (target: string): string =>
-  PKG_ROOT.includes("node_modules")
-    ? `github:Pierre-Mike/factory#v${harnessVersion()}`
-    : `file:${relative(target, PKG_ROOT)}`
 
 const replaceIn = async (input: {
   readonly dir: string
@@ -33,17 +30,16 @@ const replaceIn = async (input: {
   }
 }
 
-export const newProject = async (args: ReadonlyArray<string>): Promise<void> => {
-  const dir = args.find((a) => !a.startsWith("-"))
-  if (dir === undefined) fail("usage: axioms new <dir> [--harness <spec>] [--no-install]")
-  const target = resolve(dir ?? "")
+export const newProject = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const parsed = parseNewArgs(argv)
+  if (!parsed.ok) return fail(parsed.error)
+  const { dir, harness, install } = parsed.args
+  const target = resolve(dir)
   if (existsSync(target)) fail(`${target} already exists`)
   const appName = basename(target)
   if (!/^[a-z][a-z0-9-]*$/.test(appName)) fail(`app name "${appName}" must be lowercase kebab-case`)
 
-  const flag = args.indexOf("--harness")
-  const spec =
-    flag === -1 ? defaultSpec(target) : (args[flag + 1] ?? fail("--harness needs a value"))
+  const spec = harness ?? releaseSpec(harnessVersion())
 
   await cp(TEMPLATE_DIR, target, {
     recursive: true,
@@ -58,7 +54,7 @@ export const newProject = async (args: ReadonlyArray<string>): Promise<void> => 
 
   await run({ cmd: ["git", "init", "-q", "-b", "main"], cwd: target })
   await sync(target)
-  if (!args.includes("--no-install")) {
+  if (install) {
     if ((await run({ cmd: ["bun", "install"], cwd: target })) !== 0) fail("bun install failed")
     await runTool({ tool: "lefthook", args: ["install"], cwd: target })
     await runTool({ tool: "biome", args: ["check", "--write", "."], cwd: target })

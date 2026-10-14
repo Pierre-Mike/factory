@@ -7,13 +7,14 @@ import { Hono } from "hono"
 import { logger } from "hono/logger"
 import { requestId } from "hono/request-id"
 import { buildHealthApp } from "./features/health/health.routes"
-import { onUnexpectedError } from "./platform/http"
+import { onNotFound, onUnexpectedError } from "./platform/http"
 import type { AppRuntime } from "./platform/runtime"
 
 export const buildApp = (runtime: AppRuntime) =>
   new Hono()
     .basePath("/api")
     .onError(onUnexpectedError)
+    .notFound(onNotFound)
     .use("*", requestId())
     .use("*", logger(console.log))
     .route("/health", buildHealthApp(runtime))

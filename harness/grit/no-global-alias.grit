@@ -1,8 +1,10 @@
 language js
 
-// `noRestrictedGlobals` matches bare names only, so `globalThis.fetch` or `self.process` would walk
-// past the bans on `fetch`, `process` and `Bun`. Loaded for app code (see biome.rules.ts); tests and
-// tooling keep the globals. Use the bare name, so the rules for the file's shape decide.
+// `noRestrictedGlobals` matches bare names only, so `globalThis.fetch` or `self.Date` would walk past
+// the bans on `fetch`, `process` and `Bun`, and past the clock, randomness and async bans in
+// *.core.ts. Loaded for app code (see biome.rules.ts); tests and tooling keep the globals. Use the
+// bare name, so the rules for the file's shape decide. tests/rules.test.ts fails when a global
+// banned in biome.rules.ts is missing from the list below.
 or {
   `$global.$name`,
   `$global[$name]`
@@ -14,14 +16,35 @@ or {
   },
   $name <: or {
     `fetch`,
-    `process`,
-    `Bun`,
     `"fetch"`,
-    `"process"`,
-    `"Bun"`,
     `'fetch'`,
+    `process`,
+    `"process"`,
     `'process'`,
-    `'Bun'`
+    `Bun`,
+    `"Bun"`,
+    `'Bun'`,
+    `Date`,
+    `"Date"`,
+    `'Date'`,
+    `performance`,
+    `"performance"`,
+    `'performance'`,
+    `crypto`,
+    `"crypto"`,
+    `'crypto'`,
+    `Promise`,
+    `"Promise"`,
+    `'Promise'`,
+    `console`,
+    `"console"`,
+    `'console'`,
+    `setTimeout`,
+    `"setTimeout"`,
+    `'setTimeout'`,
+    `setInterval`,
+    `"setInterval"`,
+    `'setInterval'`
   },
-  register_diagnostic(span=$name, message="axioms: reaching a banned global through globalThis, self or window skips the lint rules. Use the bare name, so the rules for this file shape apply.")
+  register_diagnostic(span=$name, message="axioms: reaching a global through globalThis, self or window skips the lint rules. Use the bare name, so the rules for this file shape apply.")
 }

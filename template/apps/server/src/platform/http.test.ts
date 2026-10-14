@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { Hono } from "hono"
-import { errorEnvelope, onUnexpectedError, respond } from "./http"
+import { errorEnvelope, onNotFound, onUnexpectedError, respond } from "./http"
 
 const runtime = ManagedRuntime.make(Layer.empty)
 
@@ -22,6 +22,7 @@ describe("errorEnvelope", () => {
 describe("respond", () => {
   const app = new Hono()
     .onError(onUnexpectedError)
+    .notFound(onNotFound)
     .get("/ok", (c) => respond({ c, runtime, program: Effect.succeed({ a: 1 }), status: 201 }))
     .get("/fail", (c) =>
       respond({ c, runtime, program: Effect.fail({ _tag: "InvalidVerboseFlag" as const }) }),
@@ -45,5 +46,11 @@ describe("respond", () => {
     const res = await app.request("/defect")
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({ ok: false, error: { _tag: "InternalServerError" } })
+  })
+
+  it("answers an unknown route with the envelope", async () => {
+    const res = await app.request("/nope")
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ ok: false, error: { _tag: "NotFound" } })
   })
 })

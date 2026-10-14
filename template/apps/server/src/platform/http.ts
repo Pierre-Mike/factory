@@ -6,7 +6,7 @@
  * `InternalServerError` 500 and the real error is logged. Forgetting to register a tag fails safe.
  */
 import { Effect, type ManagedRuntime, Result } from "effect"
-import type { Context, ErrorHandler } from "hono"
+import type { Context, ErrorHandler, NotFoundHandler } from "hono"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 export interface TaggedError {
@@ -48,6 +48,10 @@ export const respond = async <A, E extends TaggedError, R>(input: {
   }
   return input.c.json(result.success, input.status ?? 200)
 }
+
+/** An unknown /api route answers with the same envelope, so a client never parses plain text. */
+export const onNotFound: NotFoundHandler = (c) =>
+  c.json({ ok: false as const, error: { _tag: "NotFound" } as const }, 404)
 
 /** Defects (throws that bypass the Result boundary) get the same redact-and-log treatment. */
 export const onUnexpectedError: ErrorHandler = (err, c) => {
