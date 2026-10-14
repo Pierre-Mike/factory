@@ -60,6 +60,7 @@ export const newProject = async (args: ReadonlyArray<string>): Promise<void> => 
   await sync(target)
   if (!args.includes("--no-install")) {
     if ((await run({ cmd: ["bun", "install"], cwd: target })) !== 0) fail("bun install failed")
+    await runTool({ tool: "lefthook", args: ["install"], cwd: target })
     await runTool({ tool: "biome", args: ["check", "--write", "."], cwd: target })
     await run({ cmd: ["git", "add", "-A"], cwd: target })
     await run({

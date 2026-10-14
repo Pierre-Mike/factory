@@ -51,7 +51,10 @@ export const sync = async (root: string): Promise<void> => {
     `# Hooks come from the harness. Run \`bunx axioms sync\` after upgrading it.\nextends:\n  - ${HARNESS_LEFTHOOK}\n`,
   )
 
-  if (readText(join(root, ".git", "HEAD")) !== null) {
+  // lefthook resolves `extends` at install time: before `bun install` the harness file is not in
+  // node_modules yet and lefthook would install no hooks at all, silently.
+  const harnessHooks = readText(join(root, HARNESS_LEFTHOOK)) !== null
+  if (readText(join(root, ".git", "HEAD")) !== null && harnessHooks) {
     await run({ cmd: ["bun", toolPath("lefthook"), "install"], cwd: root })
   }
   console.error("✓ synced AGENTS.md, CLAUDE.md, biome.json and lefthook.yml with the harness")

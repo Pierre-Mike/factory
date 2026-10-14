@@ -113,6 +113,7 @@ const FIXTURES: ReadonlyArray<Fixture> = [
   },
   {
     path: "apps/server/smoke/m.smoke.test.ts",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture is source code containing a template literal
     code: "export const r = () => fetch(`${process.env.SMOKE_URL}/api`)\n",
     expect: [],
   },
