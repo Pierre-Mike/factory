@@ -40,6 +40,12 @@ await step({
   cwd: app,
   expectFailure: true,
 })
+await step({ name: "sync", cmd: ["bun", cli, "sync"], cwd: app })
+await step({
+  name: "sync on a fresh project changes nothing",
+  cmd: ["git", "diff", "--exit-code"],
+  cwd: app,
+})
 await step({ name: "check (fresh)", cmd: ["bun", cli, "check"], cwd: app })
 await step({ name: "slice", cmd: ["bun", cli, "slice", "widgets"], cwd: app })
 await step({ name: "check (with slice)", cmd: ["bun", cli, "check"], cwd: app })
