@@ -14,7 +14,7 @@ import { slice } from "./commands/slice"
 import { smoke } from "./commands/smoke"
 import { sync } from "./commands/sync"
 import { lintWorkflows } from "./commands/workflows"
-import { isConventionalSubject } from "./commit-msg.core"
+import { commitSubjectProblem } from "./commit-msg.core"
 import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
 
 const HELP = `axioms ${harnessVersion()}
@@ -71,11 +71,8 @@ switch (command) {
     break
   case "commit-msg": {
     const message = readText(args[0] ?? "") ?? fail("usage: axioms commit-msg <file>")
-    if (!isConventionalSubject(message)) {
-      fail(`not a conventional commit subject: "${message.split("\n")[0]}"
-  expected: type(scope)?: subject   (<=72 chars)
-  types: feat fix docs chore refactor perf test build ci style revert`)
-    }
+    const problem = commitSubjectProblem(message)
+    if (problem !== undefined) fail(problem)
     break
   }
   case "hooks":

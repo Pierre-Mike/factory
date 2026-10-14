@@ -1,6 +1,6 @@
 {
   "name": "@pierre-mike/axioms",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Harness, CLI and app template for agent-built TypeScript apps on Cloudflare Workers",
   "type": "module",
   "license": "MIT",
