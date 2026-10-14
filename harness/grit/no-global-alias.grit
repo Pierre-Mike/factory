@@ -1,0 +1,27 @@
+language js
+
+// `noRestrictedGlobals` matches bare names only, so `globalThis.fetch` or `self.process` would walk
+// past the bans on `fetch`, `process` and `Bun`. Loaded for app code (see biome.rules.ts); tests and
+// tooling keep the globals. Use the bare name, so the rules for the file's shape decide.
+or {
+  `$global.$name`,
+  `$global[$name]`
+} where {
+  $global <: or {
+    `globalThis`,
+    `self`,
+    `window`
+  },
+  $name <: or {
+    `fetch`,
+    `process`,
+    `Bun`,
+    `"fetch"`,
+    `"process"`,
+    `"Bun"`,
+    `'fetch'`,
+    `'process'`,
+    `'Bun'`
+  },
+  register_diagnostic(span=$name, message="axioms: reaching a banned global through globalThis, self or window skips the lint rules. Use the bare name, so the rules for this file shape apply.")
+}

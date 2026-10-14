@@ -28,6 +28,10 @@ const BASE_GLOBALS = { fetch: FETCH, process: PROCESS, Bun: BUN }
 const CORE_GLOBALS = {
   ...BASE_GLOBALS,
   Date: "Functional core must not read the clock. Accept timestamps (epoch ms) as plain input from the shell.",
+  performance:
+    "Functional core must not read the clock. Accept timestamps (epoch ms) as plain input from the shell.",
+  crypto:
+    "Functional core must be deterministic. Generate ids and random values in the shell and pass them in.",
   Promise:
     "Functional core must stay synchronous. Do async work in *.io.ts and pass plain data in.",
   console: "Functional core must not perform I/O. Return values and let the shell log.",
@@ -88,7 +92,18 @@ const imports = (input: { paths: object; patterns: object[] }) => ({
 const style = (rules: object) => ({ linter: { rules: { style: rules } } })
 
 const TESTS = ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"]
-const TOOLING = ["**/scripts/**", "**/smoke/**", "**/*.config.ts", "**/worker-configuration.d.ts"]
+/**
+ * Tooling relaxes the global bans, so it must never match code that ships. Anything under `src/` is
+ * app code whatever it is named: `src/scripts/x.ts` or `features/x/x.config.ts` keeps every rule.
+ */
+const APP_CODE = "**/src/**"
+const TOOLING = [
+  "**/scripts/**",
+  "**/smoke/**",
+  "**/*.config.ts",
+  "**/worker-configuration.d.ts",
+  `!${APP_CODE}`,
+]
 
 export const biomeConfig = {
   $schema: "https://biomejs.dev/schemas/2.4.16/schema.json",
@@ -118,12 +133,21 @@ export const biomeConfig = {
       plugins: [plugin("no-cast-json")],
     },
     {
+      // Tooling is included on purpose: it may use the bare globals, so the alias is never needed.
+      includes: ["**/*.ts", "**/*.tsx", ...TESTS.map((t) => `!${t}`), "!**/*.bun.ts"],
+      plugins: [plugin("no-global-alias")],
+    },
+    {
       includes: ["**/features/**", "!**/*.core.ts", "!**/*.core.tsx"],
       ...style(imports({ paths: AXIOS, patterns: [BUN_IMPORTS, CROSS_SLICE] })),
     },
     {
       includes: ["**/*.core.ts", "**/*.core.tsx"],
-      plugins: [plugin("no-throw-in-core"), plugin("no-await-in-core")],
+      plugins: [
+        plugin("no-throw-in-core"),
+        plugin("no-await-in-core"),
+        plugin("no-random-in-core"),
+      ],
       ...style({
         ...globals(CORE_GLOBALS),
         ...imports({
@@ -144,7 +168,8 @@ export const biomeConfig = {
       }),
     },
     {
-      includes: ["**/worker.ts", "**/api.ts"],
+      // Only the edge files at the root of src/: a features/x/api.ts keeps noConsole.
+      includes: ["**/src/worker.ts", "**/src/api.ts", "!**/src/*/**"],
       linter: { rules: { suspicious: { noConsole: "off" } } },
     },
     {

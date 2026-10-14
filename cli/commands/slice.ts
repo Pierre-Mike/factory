@@ -3,26 +3,9 @@ import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { fail, readText, runTool } from "../shell"
-import {
-  isSliceName,
-  mountRoute,
-  type Patch,
-  pascalCase,
-  registerLayer,
-  registerTag,
-  sliceFiles,
-} from "../slice.core"
+import { isSliceName, sliceFiles, type WiringSources, wireSlice } from "../slice.core"
 
 const USAGE = "usage: axioms slice <feature> [--door]   (kebab-case, e.g. user-profile)"
-
-const applyPatch = async (input: {
-  readonly path: string
-  readonly patch: (text: string) => Patch
-}) => {
-  const result = input.patch(readText(input.path) ?? "")
-  if (!result.ok) fail(result.error)
-  else await Bun.write(input.path, result.text)
-}
 
 export const slice = async (input: {
   readonly root: string
@@ -36,6 +19,22 @@ export const slice = async (input: {
   const server = join(input.root, "apps", "server")
   if (existsSync(join(server, "src", "features", name))) fail(`slice already exists: ${name}`)
 
+  // Every edit is computed before anything is written: a missing anchor fails with no files touched.
+  const paths: WiringSources = {
+    api: join(server, "src", "api.ts"),
+    runtime: join(server, "src", "platform", "runtime.ts"),
+    http: join(server, "src", "platform", "http.ts"),
+  }
+  const wired = wireSlice({
+    name,
+    sources: {
+      api: readText(paths.api) ?? "",
+      runtime: readText(paths.runtime) ?? "",
+      http: readText(paths.http) ?? "",
+    },
+  })
+  if (!wired.ok) return fail(wired.error)
+
   const files = sliceFiles({ name, door: input.args.includes("--door") })
   for (const [rel, content] of Object.entries(files)) {
     const path = join(server, rel)
@@ -43,16 +42,9 @@ export const slice = async (input: {
     await Bun.write(path, content)
     console.error(`created apps/server/${rel}`)
   }
-
-  const api = join(server, "src", "api.ts")
-  const runtime = join(server, "src", "platform", "runtime.ts")
-  const http = join(server, "src", "platform", "http.ts")
-  await applyPatch({ path: api, patch: (text) => mountRoute({ api: text, name }) })
-  await applyPatch({ path: runtime, patch: (text) => registerLayer({ runtime: text, name }) })
-  await applyPatch({
-    path: http,
-    patch: (text) => registerTag({ http: text, tag: `Invalid${pascalCase(name)}Id`, status: 400 }),
-  })
+  await Bun.write(paths.api, wired.sources.api)
+  await Bun.write(paths.runtime, wired.sources.runtime)
+  await Bun.write(paths.http, wired.sources.http)
   await runTool({
     tool: "biome",
     args: [

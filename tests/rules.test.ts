@@ -58,6 +58,31 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     code: 'import { Result } from "effect"\n\nexport const ok = Result.succeed(1)\n',
     expect: [],
   },
+  {
+    path: `${F}/o/o.core.ts`,
+    code: "export const t = () => performance.now()\n",
+    expect: ["global variable performance"],
+  },
+  {
+    path: `${F}/p/p.core.ts`,
+    code: "export const id = () => crypto.randomUUID()\n",
+    expect: ["global variable crypto"],
+  },
+  {
+    path: `${F}/q/q.core.ts`,
+    code: "export const roll = () => Math.random()\n",
+    expect: ["must be deterministic"],
+  },
+  {
+    path: `${F}/r/r.core.ts`,
+    code: "export const top = (xs: ReadonlyArray<number>) => Math.max(...xs)\n",
+    expect: [],
+  },
+  {
+    path: `${F}/s/s.core.ts`,
+    code: 'export const f = () => globalThis.fetch("https://example.com")\n',
+    expect: ["through globalThis"],
+  },
   // slice shell files
   {
     path: `${F}/h/h.routes.ts`,
@@ -104,6 +129,58 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     path: "apps/server/src/platform/x.ts",
     code: "export const v = Bun.version\n",
     expect: ["global variable Bun"],
+  },
+  // globals reached through an alias
+  {
+    path: `${F}/t/t.routes.ts`,
+    code: 'export const r = () => globalThis.fetch("https://example.com")\n',
+    expect: ["through globalThis"],
+  },
+  {
+    path: "apps/server/src/platform/env.ts",
+    code: 'export const v = self["process"]\n',
+    expect: ["through globalThis"],
+  },
+  {
+    path: "apps/web/src/lib/w.ts",
+    code: 'export const f = () => window.fetch("/api")\n',
+    expect: ["through globalThis"],
+  },
+  {
+    path: "apps/web/src/lib/origin.ts",
+    code: "export const origin = () => window.location.origin\n",
+    expect: [],
+  },
+  // tooling names only relax the rules outside src/
+  {
+    path: `${F}/u/u.config.ts`,
+    code: "export const v = process.env.X\n",
+    expect: ["global variable process"],
+  },
+  {
+    path: "apps/server/src/scripts/seed.ts",
+    code: 'export const f = () => fetch("https://example.com")\n',
+    expect: ["global variable fetch"],
+  },
+  {
+    path: "apps/server/scripts/seed.ts",
+    code: "export const v = process.env.X\n",
+    expect: [],
+  },
+  {
+    path: "apps/web/vite.config.ts",
+    code: "export const v = process.env.X\n",
+    expect: [],
+  },
+  {
+    path: "apps/server/src/api.ts",
+    code: 'export const f = () => console.log("x")\n',
+    expect: [],
+  },
+  {
+    path: `${F}/v/api.ts`,
+    code: 'export const f = () => console.log("x")\n',
+    expect: ["noConsole"],
   },
   // tests and tooling
   {

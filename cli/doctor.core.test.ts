@@ -94,6 +94,13 @@ describe("runDoctor", () => {
     expect(rules({ ...healthy, lefthook: {} })).toEqual(["hooks"])
   })
 
+  it("names a missing or unparsable lefthook.yml instead of crashing", () => {
+    const problems = (lefthook: unknown) =>
+      runDoctor({ ...healthy, lefthook }).map((finding) => finding.problem)
+    expect(problems(null)).toEqual(["lefthook.yml is missing"])
+    expect(problems(undefined)).toEqual(["lefthook.yml is not valid YAML"])
+  })
+
   it("flags a stale canon copy and a CLAUDE.md that does not import it", () => {
     expect(rules({ ...healthy, canon: "newer rules" })).toEqual(["canon"])
     expect(rules({ ...healthy, claudeMd: null })).toEqual(["canon"])

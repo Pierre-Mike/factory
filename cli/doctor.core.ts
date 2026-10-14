@@ -18,6 +18,7 @@ export interface Finding {
 export interface DoctorInput {
   readonly canon: string
   readonly biome: unknown
+  /** The parsed lefthook.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
   readonly lefthook: unknown
   readonly agentsMd: string | null
   readonly claudeMd: string | null
@@ -124,16 +125,16 @@ const checkBiome = (input: {
   return findings
 }
 
-const checkLefthook = (lefthook: unknown): Finding[] =>
-  strings(field({ value: lefthook, key: "extends" })).includes(HARNESS_LEFTHOOK)
-    ? []
-    : [
-        {
-          rule: "hooks",
-          problem: `lefthook.yml does not extend ${HARNESS_LEFTHOOK}`,
-          remedy: "run `bunx axioms sync`",
-        },
-      ]
+const checkLefthook = (lefthook: unknown): Finding[] => {
+  if (strings(field({ value: lefthook, key: "extends" })).includes(HARNESS_LEFTHOOK)) return []
+  const problem =
+    lefthook === null
+      ? "lefthook.yml is missing"
+      : lefthook === undefined
+        ? "lefthook.yml is not valid YAML"
+        : `lefthook.yml does not extend ${HARNESS_LEFTHOOK}`
+  return [{ rule: "hooks", problem, remedy: "run `bunx axioms sync`" }]
+}
 
 const checkAgentDocs = (input: DoctorInput): Finding[] => {
   const findings: Finding[] = []

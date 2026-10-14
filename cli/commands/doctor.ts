@@ -86,12 +86,11 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
   const pkg = readJson(join(root, "package.json"))
   const tsconfig = readJson(join(root, "tsconfig.json"))
   const refs = isRecord(tsconfig) && Array.isArray(tsconfig.references) ? tsconfig.references : []
-  const lefthookText = readText(join(root, "lefthook.yml"))
   const server = join(root, "apps", "server")
   return {
     canon: readText(join(HARNESS_DIR, "canon.md")) ?? "",
     biome: readJson(join(root, "biome.json")),
-    lefthook: lefthookText === null ? null : Bun.YAML.parse(lefthookText),
+    lefthook: readYaml(join(root, "lefthook.yml")),
     agentsMd: readText(join(root, "AGENTS.md")),
     claudeMd: readText(join(root, "CLAUDE.md")),
     pkg,

@@ -1,0 +1,8 @@
+language js
+
+// The functional core is deterministic. Loaded for *.core.ts only (see biome.rules.ts). `Math` stays
+// allowed for pure arithmetic; `crypto` and `performance` are banned there as globals.
+`$math.random($args)` where {
+  $math <: `Math`,
+  register_diagnostic(span=$math, message="axioms: *.core.ts must be deterministic. Generate random values in the shell and pass them into the core.")
+}

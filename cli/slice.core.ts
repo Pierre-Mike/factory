@@ -219,6 +219,32 @@ export const registerLayer = (input: {
   }
 }
 
+export interface WiringSources {
+  readonly api: string
+  readonly runtime: string
+  readonly http: string
+}
+
+/**
+ * All three edits that wire a slice in, or the first one that cannot apply. The shell writes nothing
+ * until this succeeds, so a missing anchor never leaves a half-generated slice behind.
+ */
+export const wireSlice = (input: {
+  readonly sources: WiringSources
+  readonly name: string
+}):
+  | { readonly ok: true; readonly sources: WiringSources }
+  | { readonly ok: false; readonly error: string } => {
+  const { sources, name } = input
+  const api = mountRoute({ api: sources.api, name })
+  if (!api.ok) return api
+  const runtime = registerLayer({ runtime: sources.runtime, name })
+  if (!runtime.ok) return runtime
+  const http = registerTag({ http: sources.http, tag: `Invalid${pascalCase(name)}Id`, status: 400 })
+  if (!http.ok) return http
+  return { ok: true, sources: { api: api.text, runtime: runtime.text, http: http.text } }
+}
+
 const ALLOWLIST = /const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = \{\n/
 
 export const registerTag = (input: {

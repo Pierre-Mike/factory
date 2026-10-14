@@ -81,6 +81,19 @@
     },
     {
       "includes": [
+        "**/*.ts",
+        "**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.bun.ts"
+      ],
+      "plugins": [
+        "./node_modules/@pierre-mike/axioms/harness/grit/no-global-alias.grit"
+      ]
+    },
+    {
+      "includes": [
         "**/features/**",
         "!**/*.core.ts",
         "!**/*.core.tsx"
@@ -128,7 +141,8 @@
       ],
       "plugins": [
         "./node_modules/@pierre-mike/axioms/harness/grit/no-throw-in-core.grit",
-        "./node_modules/@pierre-mike/axioms/harness/grit/no-await-in-core.grit"
+        "./node_modules/@pierre-mike/axioms/harness/grit/no-await-in-core.grit",
+        "./node_modules/@pierre-mike/axioms/harness/grit/no-random-in-core.grit"
       ],
       "linter": {
         "rules": {
@@ -141,6 +155,8 @@
                   "process": "The app runs on Cloudflare Workers, which has no process. Read configuration from the env object in platform/config.ts.",
                   "Bun": "Bun is the dev toolchain, not the runtime. Bun APIs are allowed only in *.bun.ts adapters, tests, and tooling.",
                   "Date": "Functional core must not read the clock. Accept timestamps (epoch ms) as plain input from the shell.",
+                  "performance": "Functional core must not read the clock. Accept timestamps (epoch ms) as plain input from the shell.",
+                  "crypto": "Functional core must be deterministic. Generate ids and random values in the shell and pass them in.",
                   "Promise": "Functional core must stay synchronous. Do async work in *.io.ts and pass plain data in.",
                   "console": "Functional core must not perform I/O. Return values and let the shell log.",
                   "setTimeout": "Functional core must not schedule work. Keep it synchronous data-in/data-out.",
@@ -264,8 +280,9 @@
     },
     {
       "includes": [
-        "**/worker.ts",
-        "**/api.ts"
+        "**/src/worker.ts",
+        "**/src/api.ts",
+        "!**/src/*/**"
       ],
       "linter": {
         "rules": {
@@ -280,7 +297,8 @@
         "**/scripts/**",
         "**/smoke/**",
         "**/*.config.ts",
-        "**/worker-configuration.d.ts"
+        "**/worker-configuration.d.ts",
+        "!**/src/**"
       ],
       "linter": {
         "rules": {

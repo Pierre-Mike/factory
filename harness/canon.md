@@ -36,8 +36,9 @@ shared/                        # effect Schema contracts used by server and web
 
 ## Rules (each one is enforced by a tool)
 
-- Biome bans `Effect`/`Layer`/`Context`, `*.io` and `*.door` imports, `Date`, `Promise`,
-  `console` and timers in `*.core.ts`. Grit plugins ban `throw` and `await` there.
+- Biome bans `Effect`/`Layer`/`Context`, `*.io` and `*.door` imports, `Date`, `performance`,
+  `crypto`, `Promise`, `console` and timers in `*.core.ts`. Grit plugins ban `throw`, `await` and
+  `Math.random()` there.
 - No `biome-ignore`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` outside tests. The
   `suppressions` gate of `axioms check` fails on them. Fix the code, or change the rule in the
   harness.
@@ -45,7 +46,10 @@ shared/                        # effect Schema contracts used by server and web
 - No raw `fetch` and no `axios`. The web app calls the server through `hc<AppType>`. Only
   `*.io.ts` may call `fetch`, for external services.
 - The app runs on Cloudflare Workers. `process` and `Bun` are banned in app code. Bun APIs are
-  allowed only in `*.bun.ts` adapters, tests and tooling.
+  allowed only in `*.bun.ts` adapters, tests and tooling. Tooling means `scripts/`, `smoke/` and
+  `*.config.ts` outside `src/`: anything under `src/` ships, whatever its name.
+- A Grit plugin bans reaching `fetch`, `process` or `Bun` through `globalThis`, `self` or `window`.
+  Use the bare name, so the rules for the file's shape apply.
 - Every `*.core.ts` has a sibling `*.core.test.ts`. Use fast-check for non-trivial pure logic.
 - Configuration is decoded once from the Worker env in `platform/config.ts` with a Schema.
 - Database rows are `unknown` until decoded with a Schema in the slice's `*.io.ts`.

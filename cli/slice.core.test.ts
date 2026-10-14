@@ -6,6 +6,7 @@ import {
   registerLayer,
   registerTag,
   sliceFiles,
+  wireSlice,
 } from "./slice.core"
 
 const API = `import { Hono } from "hono"
@@ -105,5 +106,26 @@ describe("registerTag", () => {
 
   it("fails without the allowlist", () => {
     expect(registerTag({ http: "", tag: "X", status: 400 }).ok).toBe(false)
+  })
+})
+
+describe("wireSlice", () => {
+  const sources = { api: API, runtime: RUNTIME, http: HTTP }
+
+  it("returns all three edited files together", () => {
+    const result = wireSlice({ sources, name: "items" })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.sources.api).toContain('.route("/items", buildItemsApp(runtime))')
+    expect(result.sources.runtime).toContain("ItemsIoLive(deps)")
+    expect(result.sources.http).toContain("InvalidItemsId: 400")
+  })
+
+  it("fails with the first missing anchor and returns no edits, even when it is the last file", () => {
+    const result = wireSlice({ sources: { ...sources, http: "" }, name: "items" })
+    expect(result).toEqual({
+      ok: false,
+      error: "platform/http.ts: no `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {`",
+    })
   })
 })
