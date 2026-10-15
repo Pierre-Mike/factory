@@ -15,7 +15,8 @@ gitleaks guards the two doors a secret can leave through: the commit and the pul
 
 - `axioms secret-scan` (`cli/commands/secrets.ts`) wraps gitleaks the way `lint-workflows` wraps
   actionlint and zizmor: the Homebrew binary when installed; on a CI runner, a missing binary is
-  downloaded at the pinned version (8.30.1) into `node_modules/.cache/axioms-tools`. A missing
+  downloaded at the pinned version (8.30.1) into `node_modules/.cache/axioms-tools`, after its
+  SHA256 matches the pin (see [the baseline and pinned scanners note](2026-10-15-gate-baseline-and-pinned-scanners.md)). A missing
   tool fails the gate instead of skipping it.
 - The pre-commit hook in `harness/lefthook.yml` runs `axioms secret-scan --staged`
   (`gitleaks git --pre-commit --staged`) as its first job, so a staged secret stops the commit
@@ -56,7 +57,7 @@ single brew-installed binary, like actionlint.
   `brew install gitleaks`, the same treatment actionlint and zizmor give a push that touches CI
   files.
 - CI pins 8.30.1 while Homebrew tracks latest, so rule sets can drift between the two; bumping the
-  pin is one line in `cli/commands/secrets.ts`.
+  pin is the version and hashes in `cli/tools.core.ts`.
 - The CI job scans the history the runner checks out: GitHub's depth-one checkout scans the full
   tree of HEAD as one diff, and the dry run's local clone scans every commit.
 - A false positive is silenced by fingerprint in `.gitleaksignore` or an inline `gitleaks:allow`

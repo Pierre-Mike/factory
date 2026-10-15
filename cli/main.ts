@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
+
 /**
  * `axioms`: the harness as a command. Projects depend on this package; the commands below replace
  * the per-project scripts the template used to copy (and then drift from).
  */
 
+import { BASELINE_USAGE } from "./baseline.core"
 import { adopt } from "./commands/adopt"
+import { baseline } from "./commands/baseline"
 import { check } from "./commands/check"
 import { deploy } from "./commands/deploy"
 import { dev } from "./commands/dev"
@@ -45,6 +48,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
   axioms secret-scan [--staged]         gitleaks on the committed history, or the staged changes
+  axioms baseline [--update]            fail when a gate reports fewer checks than gate-baseline.json (--update rewrites it)
   axioms doctor                         check that every harness gate is wired
   axioms rules [--apply]                branch protection from harness/github.rules.json (--apply writes it via gh)
   axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, .claude settings + skills, biome.json, lefthook.yml
@@ -108,6 +112,10 @@ switch (command) {
     break
   case "secret-scan":
     exit(await secretScan({ root, staged: args.includes("--staged") }))
+    break
+  case "baseline":
+    if (args.some((arg) => arg !== "--update")) fail(BASELINE_USAGE)
+    else exit(await baseline({ root, update: args.includes("--update") }))
     break
   case "notes":
     exit(await notes({ root, seal: args.includes("--seal") }))

@@ -30,7 +30,13 @@ checkout, pass `--harness file:<path>` and set `AXIOMS_ALLOW_LOCAL_HARNESS=1`, a
 Every project's CI runs `check`, `smoke`, `deploy-dry-run`, `workflow-lint` (actionlint + zizmor),
 `secret-scan` (gitleaks, also on every commit via the pre-commit hook) and `pr-body` (the PR body
 fills every section of the PR template). Locally the workflow linters and the secret scanner come
-from `brew install actionlint zizmor gitleaks`.
+from `brew install actionlint zizmor gitleaks`. On a CI runner each scanner is downloaded at an
+exact version and refused unless the archive matches the SHA256 pinned in `cli/tools.core.ts`;
+every GitHub Action is pinned by commit SHA.
+
+`axioms baseline` counts the checks Biome, the tests and the notes gate report and compares them to
+`gate-baseline.json`. A drop fails; after adding checks on purpose, run `axioms baseline --update`
+and commit the file. The factory's own CI runs it as the `gate-baseline` job.
 
 ## What is in here
 
