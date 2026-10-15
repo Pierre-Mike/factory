@@ -1,7 +1,7 @@
 /**
  * Evidence reports, pure. `axioms check --json` and `axioms smoke --json` print one JSON document
- * on stdout: per gate its name, verdict, duration and, on failure, the first lines it wrote, plus
- * the overall verdict and counts. A program parses harness-written evidence instead of scraping
+ * on stdout: per gate its name, verdict, duration and, on failure, the first lines it wrote (or,
+ * for a gate that skipped itself, the reason), plus the overall verdict and counts. A program parses harness-written evidence instead of scraping
  * logs or trusting a worker's account of its own run. The exit code still fails the command.
  */
 
@@ -43,12 +43,16 @@ export interface GateOutcome {
   readonly ok: boolean
   readonly durationMs: number
   readonly output: string
+  /** Set when the gate skipped itself (it then passes): the reason it did not run. */
+  readonly skipped?: string
 }
 
 export interface GateEvidence {
   readonly name: string
   readonly pass: boolean
   readonly durationMs: number
+  /** Only when the gate skipped itself: why it did not run. A skipped gate passes. */
+  readonly skipped?: string
   /** Only on failure: the first lines the gate wrote, ANSI escapes stripped, lines capped. */
   readonly errors?: ReadonlyArray<string>
   /** Only when truncation dropped output lines: how many. */
@@ -59,8 +63,11 @@ export interface GateEvidence {
 export interface Report {
   readonly command: string
   readonly pass: boolean
+  /** Gates that passed, skipped ones included, so `passed + failed` is the number of gates. */
   readonly passed: number
   readonly failed: number
+  /** How many of the passed gates skipped themselves instead of running. */
+  readonly skipped: number
   readonly durationMs: number
   readonly gates: ReadonlyArray<GateEvidence>
 }
@@ -83,10 +90,11 @@ const errorLines = (output: string): { readonly lines: string[]; readonly omitte
 }
 
 const evidence = (outcome: GateOutcome): GateEvidence => {
-  const base = {
+  const base: GateEvidence = {
     name: outcome.name,
     pass: outcome.ok,
     durationMs: Math.round(outcome.durationMs),
+    ...(outcome.skipped === undefined ? {} : { skipped: outcome.skipped }),
   }
   if (outcome.ok) return base
   const { lines, omitted } = errorLines(outcome.output)
@@ -106,6 +114,7 @@ export const buildReport = (input: {
     pass: failed === 0,
     passed: gates.length - failed,
     failed,
+    skipped: gates.filter((gate) => gate.skipped !== undefined).length,
     durationMs: Math.round(input.gates.reduce((total, gate) => total + gate.durationMs, 0)),
     gates,
   }

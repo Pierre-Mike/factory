@@ -7,6 +7,7 @@ import {
   HARNESS_LEFTHOOK,
   HARNESS_PACKAGE,
   HARNESS_TSCONFIG,
+  harnessProfile,
   parseAllowlistedTags,
   runDoctor,
   TSCONFIG_BASE,
@@ -342,5 +343,81 @@ describe("parseAllowlistedTags", () => {
 
   it("returns nothing when the allowlist is absent", () => {
     expect(parseAllowlistedTags("export const x = 1")).toEqual([])
+  })
+})
+
+describe("lite profile (axioms adopt)", () => {
+  const litePkg = {
+    devDependencies: { [HARNESS_PACKAGE]: "github:Pierre-Mike/factory#v0.8.1" },
+    scripts: { check: "axioms check" },
+    axioms: { profile: "lite" },
+  }
+
+  /** An adopted repo: no template, no workspaces, no tsconfig, CI runs `check` only. */
+  const lite: DoctorInput = {
+    ...healthy,
+    pkg: litePkg,
+    workspaceDirs: [],
+    tsconfigReferences: [],
+    tsconfigs: [{ path: TSCONFIG_BASE, config: null }],
+    ciWorkflow: {
+      jobs: {
+        check: {
+          steps: [
+            { uses: `actions/checkout@${SHA}` },
+            { run: "bun install --frozen-lockfile" },
+            { run: "bunx axioms check" },
+          ],
+        },
+      },
+    },
+    featureNames: [],
+    smokeFiles: [],
+    allowlistedTags: [],
+    featureSource: "",
+    effectRanges: [{ workspace: ".", range: "^3.12.0" }],
+  }
+
+  it("reads the profile from package.json and defaults to app", () => {
+    expect(harnessProfile(litePkg)).toBe("lite")
+    expect(harnessProfile({})).toBe("app")
+    expect(harnessProfile({ axioms: { profile: "turbo" } })).toBe("app")
+    expect(harnessProfile(null)).toBe("app")
+  })
+
+  it("is silent on a healthy adopted repo with no tsconfig, smoke or deploy", () => {
+    expect(runDoctor(lite)).toEqual([])
+  })
+
+  it("still guards the lite gates", () => {
+    expect(rules({ ...lite, biome: null })).toEqual(["biome"])
+    expect(rules({ ...lite, lefthook: {} })).toEqual(["hooks"])
+    expect(rules({ ...lite, claudeMd: "" })).toEqual(["canon"])
+    expect(rules({ ...lite, notesReadme: null })).toEqual(["notes"])
+    expect(rules({ ...lite, pkg: { ...litePkg, devDependencies: {} } })).toEqual(["package"])
+    expect(rules({ ...lite, pkg: { ...litePkg, scripts: {} } })).toEqual(["package"])
+    expect(rules({ ...lite, ciWorkflow: null })).toEqual(["ci"])
+    expect(rules({ ...lite, ciWorkflow: { jobs: {} } })).toEqual(["ci"])
+  })
+
+  it("rejects a local harness path unless the selftest allows it", () => {
+    const local = {
+      ...lite,
+      pkg: { ...litePkg, devDependencies: { [HARNESS_PACKAGE]: "file:../factory" } },
+    }
+    expect(rules(local)).toEqual(["package"])
+    expect(rules({ ...local, allowLocalHarness: true })).toEqual([])
+  })
+
+  it("asks an app repo, but not a lite repo, for the smoke and deploy CI gates", () => {
+    expect(rules({ ...lite, pkg: { ...litePkg, axioms: {} } })).toContain("ci")
+    expect(rules(lite)).toEqual([])
+  })
+
+  it("still rejects an unpinned action in a lite repo", () => {
+    const unpinned = {
+      jobs: { check: { steps: [{ uses: "actions/checkout@v6" }, { run: "bunx axioms check" }] } },
+    }
+    expect(rules({ ...lite, ciWorkflow: unpinned })).toEqual(["ci"])
   })
 })

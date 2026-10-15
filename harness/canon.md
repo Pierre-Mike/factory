@@ -85,9 +85,9 @@ shared/                        # effect Schema contracts used by server and web
   the gate.
 - Gate evidence is harness-written, never self-reported: `axioms check --json` and
   `axioms smoke --json` print one JSON document on stdout (per gate: name, pass, duration, first
-  error lines; plus the overall verdict and counts) and still exit non-zero on failure;
-  `--report <path>` writes the same document to a file. A program or agent reads that report
-  instead of scraping logs or trusting a worker's account of its own run.
+  error lines, or the reason a gate skipped itself; plus the overall verdict and counts) and still
+  exit non-zero on failure; `--report <path>` writes the same document to a file. A program or
+  agent reads that report instead of scraping logs or trusting a worker's account of its own run.
 - The harness is pinned to a released tag (`github:Pierre-Mike/factory#vX.Y.Z`), never a local
   path, because a CI runner cannot install a path that only exists on one machine.
 - `axioms doctor` fails when a part of this harness is missing or unwired, when `biome.json` adds

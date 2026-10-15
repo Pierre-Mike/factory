@@ -70,6 +70,19 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
 const field = (input: { readonly value: unknown; readonly key: string }): unknown =>
   isRecord(input.value) ? input.value[input.key] : undefined
 
+/**
+ * Which shape of project the harness is wired into. The app template records nothing and gets
+ * every check. `axioms adopt` records `"axioms": { "profile": "lite" }` in package.json: the
+ * doctor then checks the gates the lite harness installs (lint, hooks, agent docs, notes, the
+ * Claude Code settings and skills, the pinned package, a must-pass `check` in CI) and skips the
+ * app-shaped ones (smoke, deploy, the tsconfig chain, workspace references, Effect). Losing the
+ * marker makes the doctor stricter, never quieter.
+ */
+export type HarnessProfile = "app" | "lite"
+
+export const harnessProfile = (pkg: unknown): HarnessProfile =>
+  field({ value: field({ value: pkg, key: "axioms" }), key: "profile" }) === "lite" ? "lite" : "app"
+
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
 
@@ -246,10 +259,14 @@ const checkPackage = (input: {
     })
   }
   const scripts = field({ value: input.pkg, key: "scripts" })
-  for (const [name, command] of [
-    ["check", "axioms check"],
-    ["smoke", "axioms smoke"],
-  ] as const) {
+  const required: ReadonlyArray<readonly [string, string]> =
+    harnessProfile(input.pkg) === "lite"
+      ? [["check", "axioms check"]]
+      : [
+          ["check", "axioms check"],
+          ["smoke", "axioms smoke"],
+        ]
+  for (const [name, command] of required) {
     if (field({ value: scripts, key: name }) !== command) {
       findings.push({
         rule: "package",
@@ -343,7 +360,11 @@ const checkTsconfigs = (
     return findings
   })
 
-const CI_GATES = ["check", "smoke", "deploy --dry-run", "lint-workflows", "secret-scan", "pr-body"]
+/** The gates CI must run as must-pass steps. A lite repo has no worker to smoke or deploy. */
+const CI_GATES: Record<HarnessProfile, ReadonlyArray<string>> = {
+  app: ["check", "smoke", "deploy --dry-run", "lint-workflows", "secret-scan", "pr-body"],
+  lite: ["check"],
+}
 const PINNED_USES = /^([^\s@]+@[0-9a-f]{40}|\.\/.*)$/
 
 /** A step or job that may be skipped, or may fail without failing CI, does not count as a gate. */
@@ -357,13 +378,17 @@ const runsGate = (input: { readonly run: string; readonly gate: string }) =>
     .map((line) => line.trim().replace(/^(bunx|bun x)\s+/, ""))
     .includes(`axioms ${input.gate}`)
 
-const checkCi = (ci: unknown): Finding[] => {
+const checkCi = (input: { readonly ci: unknown; readonly profile: HarnessProfile }): Finding[] => {
+  const ci = input.ci
   if (ci === null || ci === undefined) {
     return [
       {
         rule: "ci",
         problem: `.github/workflows/ci.yml is ${ci === null ? "missing" : "not valid YAML"}`,
-        remedy: "copy it from the factory template",
+        remedy:
+          input.profile === "lite"
+            ? "restore the workflow `axioms adopt` stamped: one job running `bunx axioms check`"
+            : "copy it from the factory template",
       },
     ]
   }
@@ -374,17 +399,19 @@ const checkCi = (ci: unknown): Finding[] => {
       .filter(isRecord)
       .map((step) => ({ step, counts: !optional(job) && !optional(step) })),
   )
-  const findings: Finding[] = CI_GATES.filter(
-    (gate) =>
-      !steps.some(
-        ({ step, counts }) =>
-          counts && typeof step.run === "string" && runsGate({ run: step.run, gate }),
-      ),
-  ).map((gate) => ({
-    rule: "ci",
-    problem: `ci.yml never runs \`axioms ${gate}\` as a step that must pass`,
-    remedy: `add a step \`run: bunx axioms ${gate}\` with no if: or continue-on-error:`,
-  }))
+  const findings: Finding[] = CI_GATES[input.profile]
+    .filter(
+      (gate) =>
+        !steps.some(
+          ({ step, counts }) =>
+            counts && typeof step.run === "string" && runsGate({ run: step.run, gate }),
+        ),
+    )
+    .map((gate) => ({
+      rule: "ci",
+      problem: `ci.yml never runs \`axioms ${gate}\` as a step that must pass`,
+      remedy: `add a step \`run: bunx axioms ${gate}\` with no if: or continue-on-error:`,
+    }))
   const uses = [...jobs, ...steps.map(({ step }) => step)].flatMap((node) =>
     typeof node.uses === "string" ? [node.uses] : [],
   )
@@ -430,19 +457,23 @@ const checkEffectMajor = (input: DoctorInput): Finding[] =>
       remedy: `set "effect": "^${EFFECT_MAJOR}.x" and migrate (Either -> Result, Context.Tag -> Context.Service)`,
     }))
 
-export const runDoctor = (input: DoctorInput): Finding[] => [
-  ...checkBiome({ biome: input.biome, nestedConfigs: input.nestedBiomeConfigs }),
-  ...checkLefthook(input.lefthook),
-  ...checkAgentDocs(input),
-  ...checkClaudeConfig(input),
-  ...checkPackage(input),
-  ...checkTypecheckGraph(input),
-  ...checkTsconfigs(input.tsconfigs),
-  ...checkCi(input.ciWorkflow),
-  ...checkSmokeCoverage(input),
-  ...checkAllowlist(input),
-  ...checkEffectMajor(input),
-]
+export const runDoctor = (input: DoctorInput): Finding[] => {
+  const profile = harnessProfile(input.pkg)
+  const app = profile === "app"
+  return [
+    ...checkBiome({ biome: input.biome, nestedConfigs: input.nestedBiomeConfigs }),
+    ...checkLefthook(input.lefthook),
+    ...checkAgentDocs(input),
+    ...checkClaudeConfig(input),
+    ...checkPackage(input),
+    ...(app ? checkTypecheckGraph(input) : []),
+    ...(app ? checkTsconfigs(input.tsconfigs) : []),
+    ...checkCi({ ci: input.ciWorkflow, profile }),
+    ...(app ? checkSmokeCoverage(input) : []),
+    ...(app ? checkAllowlist(input) : []),
+    ...(app ? checkEffectMajor(input) : []),
+  ]
+}
 
 /** Pull the tag names out of `const STATUS_BY_TAG ... = { Tag: 400, ... }`. */
 export const parseAllowlistedTags = (httpSource: string): string[] => {

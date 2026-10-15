@@ -20,6 +20,7 @@ harness itself writes is machine-readable.
   "pass": false,
   "passed": 8,
   "failed": 1,
+  "skipped": 0,
   "durationMs": 23145,
   "gates": [
     { "name": "lint", "pass": true, "durationMs": 1203 },
@@ -38,6 +39,14 @@ harness itself writes is machine-readable.
 - Per gate: `name`, `pass`, `durationMs`. On failure, `errors` holds the first 20 lines the gate
   wrote (ANSI escapes stripped, each line capped at 400 characters) and `omittedLines` counts what
   truncation dropped. The full stream remains on stderr.
+- **A skipped gate passes and says why.** `check` skips typecheck in a repo with no root
+  `tsconfig.json` and the test gate when no file matches Bun's test discovery, which an adopted
+  repo may lack ([axioms adopt](./2026-10-15-axioms-adopt.md)). Such a gate returns
+  `{ skipped: reason }` instead of a boolean (`GateVerdict` in `cli/commands/gates.ts`). The
+  runner prints `– <gate> skipped: <reason>`, the gate's evidence is `"pass": true` plus
+  `"skipped": "<reason>"`, and the summary's `skipped` counts those gates. `passed` includes
+  them, so `passed + failed` is still the number of gates, and the human summary names them:
+  `✓ check: all gates passed (skipped: typecheck)`.
 - **The exit code is part of the contract**: a failing gate still exits non-zero with `--json`,
   so the flag is safe in hooks and CI, and a consumer that only checks the code loses nothing.
 - `--report <path>` writes the same rendered document to a file; it works with or without
@@ -74,6 +83,15 @@ the same lines in one place. Revisit if a gate ever needs structured sub-results
 **Always write a report file, no flag.** Litters every run of every project with an artifact
 nobody asked for, and the task is solved by stdout plus an opt-in file.
 
+**Print the skip, report a plain pass.** The smallest way to combine skips with this report: the
+log says "skipped", but the evidence shows a passing typecheck that never ran, which is the
+self-reported success this report exists to replace. The reason travels with the verdict instead.
+
+**Skipped as a third bucket, outside `passed`.** Three disjoint counts read cleanly, but a gate
+would then say `"pass": true` while the summary does not count it as passed, and every consumer
+that checks `passed + failed` against the gate list would break. Counting skips inside `passed`
+and adding `skipped` keeps the per-gate and summary numbers consistent.
+
 ## Consequences
 
 - An agent session runs `bunx axioms check --json` and parses stdout; no log scraping. The exit
@@ -91,9 +109,12 @@ nobody asked for, and the task is solved by stdout plus an opt-in file.
 
 ## Verification
 
-- `bun run verify`: Biome, `tsc --noEmit`, 174 tests including `cli/report.core.test.ts`
-  (pass, failure truncation, empty run, flag refusal, a fast-check property on the limits), and
-  the notes gate — green.
+- `bun run verify`: Biome, `tsc --noEmit`, the unit tests including `cli/report.core.test.ts`
+  (pass, a skipped gate with its reason and count, failure truncation, empty run, flag refusal, a
+  fast-check property on the limits), and the notes gate — green.
+- `bun run selftest:adopt`: in an adopted repo with no tsconfig.json, `axioms check --report`
+  writes a report whose typecheck gate passes with `"skipped"` naming the missing tsconfig.json,
+  whose test gate ran, and whose `skipped` count is 1.
 - `bun cli/main.ts check --json` on the factory itself prints one parseable document on stdout
   (9 gates, failing ones carrying `errors`) and exits 1; `... | jq .pass` reads it. On a passing
   tree it exits 0 with `"pass": true`.

@@ -9,7 +9,14 @@
 import type { GateOutcome } from "../report.core"
 import type { Sink } from "../shell"
 
-export type Gate = readonly [string, (sink: Sink | undefined) => Promise<boolean>]
+/**
+ * A gate passes (`true`), fails (`false`), or skips itself with a reason, such as check's
+ * typecheck in a repo with no tsconfig.json. A skip passes: the runner prints the reason and keeps
+ * it on the outcome, so the evidence report says which gates did not run and why.
+ */
+export type GateVerdict = boolean | { readonly skipped: string }
+
+export type Gate = readonly [string, (sink: Sink | undefined) => Promise<GateVerdict>]
 
 export interface GateRun {
   readonly ok: boolean
@@ -45,15 +52,23 @@ export const runGates = async (input: {
     const restore = sink === undefined ? undefined : teeConsole(sink)
     const started = performance.now()
     let ok: boolean
+    let skipped: string | undefined
     try {
-      ok = await gate(sink)
+      const verdict = await gate(sink)
+      if (typeof verdict === "boolean") ok = verdict
+      else {
+        console.error(`– ${name} skipped: ${verdict.skipped}`)
+        ok = true
+        skipped = verdict.skipped
+      }
     } catch (error) {
       console.error(`✖ ${name} crashed: ${String(error)}`)
       ok = false
     } finally {
       restore?.()
     }
-    outcomes.push({ name, ok, durationMs: performance.now() - started, output: chunks.join("") })
+    const durationMs = performance.now() - started
+    outcomes.push({ name, ok, durationMs, output: chunks.join(""), skipped })
     if (!ok && input.stopOnFailure) break
   }
   return { ok: outcomes.every((outcome) => outcome.ok), gates: outcomes }
@@ -62,5 +77,11 @@ export const runGates = async (input: {
 export const failedNames = (run: GateRun): string =>
   run.gates
     .filter((gate) => !gate.ok)
+    .map((gate) => gate.name)
+    .join(", ")
+
+export const skippedNames = (run: GateRun): string =>
+  run.gates
+    .filter((gate) => gate.skipped !== undefined)
     .map((gate) => gate.name)
     .join(", ")

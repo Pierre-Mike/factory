@@ -44,6 +44,8 @@ const workspaceDirs = (input: { readonly root: string; readonly pkg: unknown }):
 }
 
 const featureSource = async (serverSrc: string): Promise<string> => {
+  // An adopted (lite) repo has no apps/server at all; scanning a missing folder throws.
+  if (!existsSync(serverSrc)) return ""
   const glob = new Bun.Glob("**/*.ts")
   const parts: string[] = []
   for await (const file of glob.scan({ cwd: serverSrc })) {

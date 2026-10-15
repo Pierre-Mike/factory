@@ -53,12 +53,37 @@ describe("buildReport", () => {
       pass: true,
       passed: 2,
       failed: 0,
+      skipped: 0,
       durationMs: 113,
       gates: [
         { name: "lint", pass: true, durationMs: 12 },
         { name: "test", pass: true, durationMs: 101 },
       ],
     })
+  })
+
+  it("reports a skipped gate as passing, with its reason, and counts it among the passed", () => {
+    const reason = "no tsconfig.json at the project root"
+    const report = buildReport({
+      command: "check",
+      gates: [
+        gate({ name: "lint" }),
+        gate({ name: "typecheck", durationMs: 0.2, skipped: reason }),
+      ],
+    })
+    expect(report).toEqual({
+      command: "check",
+      pass: true,
+      passed: 2,
+      failed: 0,
+      skipped: 1,
+      durationMs: 13,
+      gates: [
+        { name: "lint", pass: true, durationMs: 12 },
+        { name: "typecheck", pass: true, durationMs: 0, skipped: reason },
+      ],
+    })
+    expect(JSON.parse(renderReport(report)).gates[1].skipped).toBe(reason)
   })
 
   it("keeps the first lines of a failing gate, strips ANSI, and counts what it drops", () => {
@@ -88,6 +113,7 @@ describe("buildReport", () => {
       pass: true,
       passed: 0,
       failed: 0,
+      skipped: 0,
       durationMs: 0,
       gates: [],
     })

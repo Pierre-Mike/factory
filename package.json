@@ -24,6 +24,7 @@
     "test": "bun test cli harness tests",
     "typecheck": "tsc --noEmit",
     "selftest": "bun run tests/selftest.ts",
+    "selftest:adopt": "bun run tests/selftest-adopt.ts",
     "lock:template": "cd template && rm -f bun.lock && bun install --lockfile-only --ignore-scripts",
     "verify": "biome ci . && tsc --noEmit && bun run test && bun cli/main.ts notes"
   },
