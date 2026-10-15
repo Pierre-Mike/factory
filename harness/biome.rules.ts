@@ -43,6 +43,13 @@ const AXIOS = {
   axios: { message: "Use the typed Hono RPC client (hc<AppType>) instead of axios." },
 }
 
+/** The `process` global is banned in app code; importing the module would walk past that ban. */
+const APP_PATHS = {
+  ...AXIOS,
+  process: { message: PROCESS },
+  "node:process": { message: PROCESS },
+}
+
 const BUN_IMPORTS = {
   group: ["bun", "bun:*"],
   message: BUN,
@@ -74,13 +81,23 @@ const CORE_IMPORT_PATTERNS = [
   },
 ]
 
+const EFFECT_RUNTIME_MODULES = ["Effect", "Layer", "Context", "ManagedRuntime", "Runtime"]
+const EFFECT_RUNTIME_MESSAGE =
+  "Functional core must stay pure: model failures as Result/Option/Data. The Effect runtime lives in *.io.ts and *.routes.ts. Result, Option, Data and Schema are allowed here."
+
 const EFFECT_RUNTIME = {
-  effect: {
-    importNames: ["Effect", "Layer", "Context", "ManagedRuntime", "Runtime"],
-    message:
-      "Functional core must stay pure: model failures as Result/Option/Data. The Effect runtime lives in *.io.ts and *.routes.ts. Result, Option, Data and Schema are allowed here.",
-  },
+  effect: { importNames: EFFECT_RUNTIME_MODULES, message: EFFECT_RUNTIME_MESSAGE },
 }
+
+/** The same modules reached through their subpaths (`import * as Effect from "effect/Effect"`). */
+const EFFECT_RUNTIME_SUBPATHS = {
+  group: EFFECT_RUNTIME_MODULES.map((name) => `effect/${name}`),
+  message: EFFECT_RUNTIME_MESSAGE,
+}
+
+/** The `crypto` global is banned in the core; importing the module would walk past that ban. */
+const CRYPTO_MODULE = { message: CORE_GLOBALS.crypto }
+const CORE_PATHS = { crypto: CRYPTO_MODULE, "node:crypto": CRYPTO_MODULE }
 
 const globals = (denied: Record<string, string>) => ({
   noRestrictedGlobals: { level: "error", options: { deniedGlobals: denied } },
@@ -139,7 +156,7 @@ const sharedConfig = (pluginDir: string) => {
         style: {
           useConst: "error",
           ...globals(BASE_GLOBALS),
-          ...imports({ paths: AXIOS, patterns: [BUN_IMPORTS] }),
+          ...imports({ paths: APP_PATHS, patterns: [BUN_IMPORTS] }),
         },
       },
     },
@@ -155,7 +172,7 @@ const sharedConfig = (pluginDir: string) => {
       },
       {
         includes: ["**/features/**", "!**/*.core.ts", "!**/*.core.tsx"],
-        ...style(imports({ paths: AXIOS, patterns: [BUN_IMPORTS, CROSS_SLICE] })),
+        ...style(imports({ paths: APP_PATHS, patterns: [BUN_IMPORTS, CROSS_SLICE] })),
       },
       {
         includes: ["**/*.core.ts", "**/*.core.tsx"],
@@ -167,8 +184,8 @@ const sharedConfig = (pluginDir: string) => {
         ...style({
           ...globals(CORE_GLOBALS),
           ...imports({
-            paths: { ...AXIOS, ...EFFECT_RUNTIME },
-            patterns: [BUN_IMPORTS, CROSS_SLICE, ...CORE_IMPORT_PATTERNS],
+            paths: { ...APP_PATHS, ...CORE_PATHS, ...EFFECT_RUNTIME },
+            patterns: [BUN_IMPORTS, CROSS_SLICE, EFFECT_RUNTIME_SUBPATHS, ...CORE_IMPORT_PATTERNS],
           }),
         }),
       },
@@ -180,7 +197,8 @@ const sharedConfig = (pluginDir: string) => {
         includes: ["**/*.bun.ts", ...TESTS],
         ...style({
           ...globals({ fetch: FETCH, process: PROCESS }),
-          ...imports({ paths: AXIOS, patterns: [] }),
+          // APP_PATHS, not AXIOS: *.bun.ts ships under src/, so the process import stays banned.
+          ...imports({ paths: APP_PATHS, patterns: [] }),
         }),
       },
       {

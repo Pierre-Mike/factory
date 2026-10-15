@@ -8,9 +8,17 @@ import {
   parseAllowlistedTags,
   runDoctor,
 } from "../doctor.core"
-import { HARNESS_DIR, readJson, readText } from "../shell"
+import { HARNESS_DIR, harnessVersion, readJson, readText } from "../shell"
 
 const listDir = (path: string): string[] => (existsSync(path) ? readdirSync(path) : [])
+
+/** Subfolders only: a stray file such as macOS's .DS_Store is not a feature. */
+const listSubdirs = (path: string): string[] =>
+  existsSync(path)
+    ? readdirSync(path, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+    : []
 
 const workspaceDirs = (input: { readonly root: string; readonly pkg: unknown }): string[] => {
   const patterns =
@@ -100,13 +108,14 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     ),
     nestedBiomeConfigs: nestedBiomeConfigs(root),
     ciWorkflow: readYaml(join(root, ".github", "workflows", "ci.yml")),
-    featureNames: listDir(join(server, "src", "features")),
+    featureNames: listSubdirs(join(server, "src", "features")),
     smokeFiles: listDir(join(server, "smoke")),
     allowlistedTags: parseAllowlistedTags(
       readText(join(server, "src", "platform", "http.ts")) ?? "",
     ),
     featureSource: await featureSource(join(server, "src")),
     allowLocalHarness: process.env.AXIOMS_ALLOW_LOCAL_HARNESS === "1",
+    harnessVersion: harnessVersion(),
     effectRanges: effectRanges({ root, workspaces: [".", ...workspaceDirs({ root, pkg })] }),
   }
 }

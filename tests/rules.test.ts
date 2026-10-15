@@ -59,12 +59,12 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     expect: [],
   },
   {
-    path: `${F}/o/o.core.ts`,
+    path: `${F}/cr/cr.core.ts`,
     code: "export const t = () => performance.now()\n",
     expect: ["global variable performance"],
   },
   {
-    path: `${F}/p/p.core.ts`,
+    path: `${F}/ef/ef.core.ts`,
     code: "export const id = () => crypto.randomUUID()\n",
     expect: ["global variable crypto"],
   },
@@ -266,6 +266,61 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     expect: ["casting .json()"],
   },
   {
+    path: "apps/web/src/lib/q2.ts",
+    code: "interface U {\n  readonly id: string\n}\n\nexport const f = async (r: Response) => {\n  const u: U = await r.json()\n  return u\n}\n",
+    expect: ["casting .json()"],
+  },
+  {
+    path: "apps/web/src/lib/q3.ts",
+    code: "export const f = async (r: Response) => {\n  const u: unknown = await r.json()\n  return u\n}\n",
+    expect: [],
+  },
+  {
+    path: "apps/web/src/lib/q4.ts",
+    code: "export const f = (r: Response) => r.json<{ a: 1 }>()\n",
+    expect: ["casting .json()"],
+  },
+  {
+    path: "apps/web/src/lib/q5.ts",
+    code: "export const f = (r: Response) => r.json<unknown>()\n",
+    expect: [],
+  },
+  {
+    path: "apps/web/src/lib/q6.ts",
+    code: "export const f = (r: Response) => {\n  const p: Promise<unknown> = r.json()\n  return p\n}\n",
+    expect: [],
+  },
+  {
+    path: "apps/server/src/platform/nodeprocess.bun.ts",
+    code: 'import { env } from "node:process"\n\nexport const p = env.PORT\n',
+    expect: ["no process"],
+  },
+  {
+    path: "apps/server/src/platform/nodeprocess.ts",
+    code: 'import { env } from "node:process"\n\nexport const p = env.PORT\n',
+    expect: ["no process"],
+  },
+  {
+    path: "apps/server/scripts/nodeprocess.ts",
+    code: 'import { env } from "node:process"\n\nexport const p = env.PORT\n',
+    expect: [],
+  },
+  {
+    path: `${F}/nodecrypto/nodecrypto.core.ts`,
+    code: 'import { randomUUID } from "node:crypto"\n\nexport const id = () => randomUUID()\n',
+    expect: ["deterministic"],
+  },
+  {
+    path: `${F}/effectsub/effectsub.core.ts`,
+    code: 'import * as Effect from "effect/Effect"\n\nexport const e = Effect.void\n',
+    expect: ["Functional core must stay pure"],
+  },
+  {
+    path: `${F}/effectsub/effectsub.io.ts`,
+    code: 'import * as Effect from "effect/Effect"\n\nexport const e = Effect.void\n',
+    expect: [],
+  },
+  {
     path: "apps/web/src/lib/r.ts",
     code: 'export const f = () => fetch("/api")\n',
     expect: ["global variable fetch"],
@@ -322,6 +377,12 @@ describe("grit/no-global-alias.grit", () => {
     const grit = await Bun.file(join(PKG_ROOT, "harness", "grit", "no-global-alias.grit")).text()
     const missing = Object.keys(CORE_GLOBALS).filter((name) => !grit.includes(`\`${name}\``))
     expect(missing).toEqual([])
+  })
+})
+
+describe("fixtures", () => {
+  it("have unique paths, so one cannot overwrite another", () => {
+    expect(new Set(FIXTURES.map((f) => f.path)).size).toBe(FIXTURES.length)
   })
 })
 

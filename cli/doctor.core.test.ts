@@ -48,6 +48,7 @@ const healthy: DoctorInput = {
   allowlistedTags: ["InvalidVerboseFlag"],
   featureSource: 'return Result.fail({ _tag: "InvalidVerboseFlag" })',
   allowLocalHarness: false,
+  harnessVersion: "0.7.0",
   effectRanges: [
     { workspace: "shared", range: "^4.0.4" },
     { workspace: "apps/server", range: "4.0.4" },
@@ -117,6 +118,13 @@ describe("runDoctor", () => {
         },
       }),
     ).toEqual(["package"])
+  })
+
+  it("tells you to install the harness from GitHub, since it is not on npm", () => {
+    const missing = runDoctor({ ...healthy, pkg: { scripts: healthy.pkg } }).find(
+      (f) => f.rule === "package",
+    )
+    expect(missing?.remedy).toBe(`bun add -d ${HARNESS_PACKAGE}@github:Pierre-Mike/factory#v0.7.0`)
   })
 
   it("flags a harness pinned to a local path, unless the self-test allows it", () => {

@@ -102,6 +102,43 @@ describe("planWorkflow", () => {
     expect(plan.unsupported).toHaveLength(4)
   })
 
+  it("refuses env, shell and defaults at any level, which the replay would ignore", () => {
+    const plan = planWorkflow({
+      workflow: {
+        env: { FORCE_COLOR: "1" },
+        defaults: { run: { "working-directory": "apps/server" } },
+        jobs: {
+          check: {
+            env: { NODE_ENV: "test" },
+            steps: [
+              { run: "bun test", env: { DEBUG: "1" } },
+              { run: "bun test", shell: "sh" },
+            ],
+          },
+        },
+      },
+      localBun: "1",
+    })
+    expect(plan.unsupported).toEqual([
+      "workflow: env, defaults would be ignored, so it is not simulated",
+      "check: env would be ignored, so it is not simulated",
+      "check › bun test: env would be ignored, so it is not simulated",
+      "check › bun test: shell would be ignored, so it is not simulated",
+    ])
+  })
+
+  it("replays shell: bash and skips env: on a provided step, since both match CI", () => {
+    const plan = planWorkflow({
+      workflow: workflow([
+        { uses: "actions/checkout@abc", env: { GIT_TRACE: "1" } },
+        { run: "bun test", shell: "bash" },
+      ]),
+      localBun: "1",
+    })
+    expect(plan.unsupported).toEqual([])
+    expect(plan.jobs[0]?.steps).toHaveLength(2)
+  })
+
   it("refuses an empty or malformed workflow", () => {
     expect(planWorkflow({ workflow: null, localBun: "1" }).unsupported).toEqual([
       "the workflow has no jobs",

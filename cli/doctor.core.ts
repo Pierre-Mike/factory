@@ -4,6 +4,7 @@
  * Deleting a gate becomes a visible failure instead of silent drift.
  */
 import { extractCanon } from "./canon.core"
+import { releaseSpec } from "./new.core"
 
 export const HARNESS_PACKAGE = "@pierre-mike/axioms"
 export const HARNESS_BIOME = `${HARNESS_PACKAGE}/biome`
@@ -37,6 +38,8 @@ export interface DoctorInput {
   readonly effectRanges: ReadonlyArray<{ readonly workspace: string; readonly range: string }>
   /** Set by the factory's own self-test (AXIOMS_ALLOW_LOCAL_HARNESS=1), which tests an unreleased harness. */
   readonly allowLocalHarness: boolean
+  /** The installed harness version, so a remedy can name the exact release to pin. */
+  readonly harnessVersion: string
 }
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -161,7 +164,10 @@ const LOCAL_SPEC = /^(file|link|portal|workspace):/
 const checkPackage = (input: {
   readonly pkg: unknown
   readonly allowLocalHarness: boolean
+  readonly harnessVersion: string
 }): Finding[] => {
+  // Not published to npm: a bare `bun add -d @pierre-mike/axioms` fails with a 404.
+  const pinned = releaseSpec(input.harnessVersion)
   const findings: Finding[] = []
   const devDeps = field({ value: input.pkg, key: "devDependencies" })
   const spec = field({ value: devDeps, key: HARNESS_PACKAGE })
@@ -169,13 +175,13 @@ const checkPackage = (input: {
     findings.push({
       rule: "package",
       problem: `${HARNESS_PACKAGE} is not a devDependency`,
-      remedy: `bun add -d ${HARNESS_PACKAGE}`,
+      remedy: `bun add -d ${HARNESS_PACKAGE}@${pinned}`,
     })
   } else if (typeof spec === "string" && LOCAL_SPEC.test(spec) && !input.allowLocalHarness) {
     findings.push({
       rule: "package",
       problem: `${HARNESS_PACKAGE} is pinned to a local path (${spec}), which a CI runner cannot install`,
-      remedy: `pin a released tag: "github:Pierre-Mike/factory#vX.Y.Z"`,
+      remedy: `pin a released tag: bun add -d ${HARNESS_PACKAGE}@${pinned}`,
     })
   }
   const scripts = field({ value: input.pkg, key: "scripts" })

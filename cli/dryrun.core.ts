@@ -81,6 +81,21 @@ const PROVIDED: ReadonlyArray<readonly [RegExp, string]> = [
   [/^actions\/cache@/, "a cache only changes speed"],
 ]
 
+/**
+ * Keys that change how a `run:` step executes but that the replay does not apply. Ignoring them
+ * would run the step in the wrong folder, shell or environment, and report a result CI would not.
+ */
+const IGNORED_KEYS = ["env", "shell", "defaults"] as const
+
+/**
+ * The keys of `node` the replay would ignore. `shell: bash` is not one: every step is replayed
+ * with `bash --noprofile --norc -eo pipefail`, which is what GitHub runs for it.
+ */
+const ignoredKeys = (node: Record<string, unknown>): string[] =>
+  IGNORED_KEYS.filter(
+    (key) => node[key] !== undefined && !(key === "shell" && node[key] === "bash"),
+  )
+
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined)
 
 const planStep = (input: {
@@ -109,6 +124,12 @@ const planStep = (input: {
     }
   }
   if (run === undefined) return { unsupported: `${where}: step has neither run: nor uses:` }
+  // Only run steps: a provided step is skipped, so its env: changes nothing.
+  const ignored = ignoredKeys(step)
+  if (ignored.length > 0)
+    return {
+      unsupported: `${where}: ${ignored.join(", ")} would be ignored, so it is not simulated`,
+    }
   if (run.includes("${{")) return { unsupported: `${where}: \${{ }} expressions are not simulated` }
   return { step: { kind: "run", name, run, cwd: text(step["working-directory"]) ?? "." } }
 }
@@ -119,11 +140,20 @@ export const planWorkflow = (input: {
 }): Plan => {
   const jobs = isRecord(input.workflow) && isRecord(input.workflow.jobs) ? input.workflow.jobs : {}
   const unsupported: string[] = []
+  const workflow = isRecord(input.workflow) ? input.workflow : {}
+  const ignoredTop = ignoredKeys(workflow)
+  if (ignoredTop.length > 0) {
+    unsupported.push(`workflow: ${ignoredTop.join(", ")} would be ignored, so it is not simulated`)
+  }
   const warnings: string[] = []
   const planned = Object.entries(jobs).map(([name, job]) => {
     const steps = isRecord(job) && Array.isArray(job.steps) ? job.steps : []
     if (isRecord(job) && (job.strategy !== undefined || job.services !== undefined)) {
       unsupported.push(`${name}: matrix strategies and services are not simulated`)
+    }
+    const ignoredJob = isRecord(job) ? ignoredKeys(job) : []
+    if (ignoredJob.length > 0) {
+      unsupported.push(`${name}: ${ignoredJob.join(", ")} would be ignored, so it is not simulated`)
     }
     return {
       name,

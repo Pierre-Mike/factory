@@ -54,22 +54,39 @@ export const newProject = async (argv: ReadonlyArray<string>): Promise<void> => 
   pkg.devDependencies = { ...pkg.devDependencies, [HARNESS_PACKAGE]: spec }
   await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
 
-  await run({ cmd: ["git", "init", "-q", "-b", "main"], cwd: target })
+  // A step that fails must stop here: printing "created" over a project with no hooks or no first
+  // commit hands out something that breaks on the first push (ci-dry-run needs HEAD).
+  const step = async (input: { readonly name: string; readonly code: Promise<number> }) => {
+    if ((await input.code) !== 0) fail(`${input.name} failed in ${target}`)
+  }
+  await step({
+    name: "git init",
+    code: run({ cmd: ["git", "init", "-q", "-b", "main"], cwd: target }),
+  })
   await sync(target)
   if (install) {
-    if ((await run({ cmd: ["bun", "install"], cwd: target })) !== 0) fail("bun install failed")
-    await runTool({ tool: "lefthook", args: ["install"], cwd: target })
-    await runTool({ tool: "biome", args: ["check", "--write", "."], cwd: target })
-    await run({ cmd: ["git", "add", "-A"], cwd: target })
-    await run({
-      cmd: [
-        "git",
-        "commit",
-        "-q",
-        "-m",
-        `chore: scaffold from ${HARNESS_PACKAGE} v${harnessVersion()}`,
-      ],
-      cwd: target,
+    await step({ name: "bun install", code: run({ cmd: ["bun", "install"], cwd: target }) })
+    await step({
+      name: "lefthook install",
+      code: runTool({ tool: "lefthook", args: ["install"], cwd: target }),
+    })
+    await step({
+      name: "biome check --write",
+      code: runTool({ tool: "biome", args: ["check", "--write", "."], cwd: target }),
+    })
+    await step({ name: "git add", code: run({ cmd: ["git", "add", "-A"], cwd: target }) })
+    await step({
+      name: "the first commit (is git user.name and user.email set?)",
+      code: run({
+        cmd: [
+          "git",
+          "commit",
+          "-q",
+          "-m",
+          `chore: scaffold from ${HARNESS_PACKAGE} v${harnessVersion()}`,
+        ],
+        cwd: target,
+      }),
     })
   }
   console.error(`

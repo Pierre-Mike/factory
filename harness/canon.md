@@ -8,7 +8,7 @@ apps/server/
     features/<feature>/
       <feature>.core.ts        # pure domain logic: no I/O, no Effect runtime
       <feature>.core.test.ts   # co-located unit test (data in, data out)
-      <feature>.io.ts          # I/O as an Effect service (Context.Tag + Layer)
+      <feature>.io.ts          # I/O as an Effect service (Context.Service + Layer)
       <feature>.routes.ts      # Hono shell: impure read, pure core, respond
       <feature>.routes.test.ts # the route over an in-memory SQLite database
       <feature>.door.ts        # opt-in: the only file other slices may import
@@ -36,17 +36,19 @@ shared/                        # effect Schema contracts used by server and web
 
 ## Rules (each one is enforced by a tool)
 
-- Biome bans `Effect`/`Layer`/`Context`, `*.io` and `*.door` imports, `Date`, `performance`,
-  `crypto`, `Promise`, `console` and timers in `*.core.ts`. Grit plugins ban `throw`, `await` and
-  `Math.random()` there.
+- In `*.core.ts`, Biome bans named imports of `Effect`/`Layer`/`Context` from `effect` and imports
+  of their subpaths (`effect/Effect`), `*.io` and `*.door` imports, `Date`, `performance`,
+  `crypto` (the global and the `node:crypto` import), `Promise`, `console` and timers. Grit
+  plugins ban `throw`, `await` and `Math.random()` there.
 - No `biome-ignore`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` outside tests. The
   `suppressions` gate of `axioms check` fails on them. Fix the code, or change the rule in the
   harness.
 - Functions you declare take at most one parameter. Pass an options object for more.
 - No raw `fetch` and no `axios`. The web app calls the server through `hc<AppType>`. Only
   `*.io.ts` may call `fetch`, for external services.
-- The app runs on Cloudflare Workers. `process` and `Bun` are banned in app code. Bun APIs are
-  allowed only in `*.bun.ts` adapters, tests and tooling. Tooling means `scripts/`, `smoke/` and
+- The app runs on Cloudflare Workers. `process` (the global and the `node:process` import) and
+  `Bun` are banned in app code. Bun APIs are allowed only in `*.bun.ts` adapters, tests and
+  tooling. Tooling means `scripts/`, `smoke/` and
   `*.config.ts` outside `src/`: anything under `src/` ships, whatever its name.
 - A Grit plugin bans reaching any of these banned globals (`fetch`, `process`, `Bun`, and the core
   bans such as `Date` and `crypto`) through `globalThis`, `self` or `window`. Use the bare name, so

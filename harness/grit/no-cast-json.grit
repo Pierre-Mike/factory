@@ -2,11 +2,16 @@ language js
 
 // `.json() as T` asserts a shape without checking it, so a contract change compiles and then fails
 // at runtime. Loaded for non-test files only (see biome.rules.ts): tests may cast raw shapes.
+// `.json()` returns `any`, so `const u: User = await r.json()` is the same cast without the `as`.
+// The generic form `r.json<User>()` (Hono's c.req.json, workers-types' Body.json) is the same cast
+// again. Annotating it `unknown` is the safe form and stays allowed.
 or {
   `$x.json() as $t`,
   `await $x.json() as $t`,
   `($x.json()) as $t`,
-  `(await $x.json()) as $t`
+  `(await $x.json()) as $t`,
+  `$name: $t = await $x.json()` where { $t <: not `unknown` },
+  `$x.json<$t>()` where { $t <: not `unknown` }
 } where {
   register_diagnostic(span=$t, message="axioms: casting .json() asserts without validating. Decode with the shared Schema helpers (decode* in shared/src) so a contract change fails at the boundary.")
 }
