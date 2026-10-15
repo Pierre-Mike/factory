@@ -9,7 +9,7 @@ import {
 } from "./adopt.core"
 import { HARNESS_PACKAGE, isRecord } from "./doctor.core"
 
-const SPEC = "github:Pierre-Mike/factory#v9.9.9"
+const SPEC = "git+ssh://git@github.com/Pierre-Mike/factory.git#v9.9.9"
 const PR_TEMPLATE = "## What changed\n\n## Why\n"
 
 const bare: AdoptState = {

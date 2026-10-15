@@ -65,7 +65,10 @@ export const newProject = async (argv: ReadonlyArray<string>): Promise<void> => 
   })
   await sync(target)
   if (install) {
-    await step({ name: "bun install", code: run({ cmd: ["bun", "install"], cwd: target }) })
+    await step({
+      name: "bun install (can git reach the private harness? see the factory README)",
+      code: run({ cmd: ["bun", "install"], cwd: target }),
+    })
     await step({
       name: "lefthook install",
       code: runTool({ tool: "lefthook", args: ["install"], cwd: target }),
@@ -95,5 +98,8 @@ export const newProject = async (argv: ReadonlyArray<string>): Promise<void> => 
 next:
   cd ${relative(process.cwd(), target) || "."}
   bun run check && bun run smoke
-  bun run dev`)
+  bun run dev
+
+before the first push, give CI read access to the private harness:
+  gh secret set HARNESS_TOKEN   # a fine-grained token: Pierre-Mike/factory, Contents read-only`)
 }

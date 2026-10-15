@@ -14,7 +14,17 @@ bun run deploy:dry  # bundle the worker + apply migrations locally (no Cloudflar
 bun run ci:dry      # replay ci.yml on a clean clone; pre-push runs it when CI/CD files change
 ```
 
-`new` pins the GitHub tag of the CLI's own version, so that tag must exist. To try an unreleased
+This repo is private. Projects pin the harness as
+`git+ssh://git@github.com/Pierre-Mike/factory.git#vX.Y.Z`, because bun fetches `github:` specs
+without credentials and gets a 404. Bun hands a `git+ssh` spec to git, so git's auth applies:
+
+- On a machine with no GitHub SSH key, rewrite SSH to HTTPS once so the gh credential helper
+  answers: `git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"`.
+- In CI, each job's `harness-access` step does the same rewrite with the `HARNESS_TOKEN` repo
+  secret: a fine-grained token with read-only Contents access to `Pierre-Mike/factory`. Set it in
+  each project with `gh secret set HARNESS_TOKEN`.
+
+`new` pins the tag of the CLI's own version, so that tag must exist. To try an unreleased
 checkout, pass `--harness file:<path>` and set `AXIOMS_ALLOW_LOCAL_HARNESS=1`, as the selftest does.
 
 Every project's CI runs `check`, `smoke`, `deploy-dry-run`, `workflow-lint` (actionlint + zizmor),
@@ -42,7 +52,7 @@ from `brew install actionlint zizmor gitleaks`.
 
 ## How a project uses it
 
-A project depends on `@pierre-mike/axioms`, pinned to a release tag (`github:Pierre-Mike/factory#v0.6.1`), and owns only its app code:
+A project depends on `@pierre-mike/axioms`, pinned to a release tag (`git+ssh://git@github.com/Pierre-Mike/factory.git#v0.10.0`), and owns only its app code:
 
 - `biome.json` extends `@pierre-mike/axioms/biome` and may not add rules (`axioms doctor` checks).
 - `lefthook.yml` extends the harness hooks.
@@ -86,6 +96,11 @@ git add -A && git commit -m "chore: adopt the axioms harness"
 - Adopting twice refuses and points to `bunx axioms sync`; outside a git repository it refuses.
   An existing ci.yml, PR template and `.fallowrc.json` are left alone, with a warning that says
   what the gates expect of them.
+
+## License
+
+All rights reserved. Versions up to v0.9.0 were published under the MIT license, and that grant
+still covers copies of those versions.
 
 ## Changing the factory
 

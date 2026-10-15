@@ -3,7 +3,8 @@
   "version": "0.9.0",
   "description": "Harness, CLI and app template for agent-built TypeScript apps on Cloudflare Workers",
   "type": "module",
-  "license": "MIT",
+  "license": "UNLICENSED",
+  "private": true,
   "bin": {
     "axioms": "./cli/main.ts"
   },

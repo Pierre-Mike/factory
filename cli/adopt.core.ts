@@ -129,6 +129,15 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.6
+      # The harness repo is private. bun hands its git+ssh spec to git, and this rewrites that URL to
+      # HTTPS with a read-only token scoped to the factory repo (the HARNESS_TOKEN secret).
+      - name: harness access
+        id: harness-access
+        env:
+          HARNESS_TOKEN: \${{ secrets.HARNESS_TOKEN }}
+        run: |
+          test -n "$HARNESS_TOKEN" || { echo "::error::set the HARNESS_TOKEN repo secret"; exit 1; }
+          git config --global url."https://x-access-token:\${HARNESS_TOKEN}@github.com/Pierre-Mike/factory".insteadOf "ssh://git@github.com/Pierre-Mike/factory"
       - run: bun install --frozen-lockfile
       - run: bunx axioms check
 
@@ -142,6 +151,15 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.6
+      # The harness repo is private. bun hands its git+ssh spec to git, and this rewrites that URL to
+      # HTTPS with a read-only token scoped to the factory repo (the HARNESS_TOKEN secret).
+      - name: harness access
+        id: harness-access
+        env:
+          HARNESS_TOKEN: \${{ secrets.HARNESS_TOKEN }}
+        run: |
+          test -n "$HARNESS_TOKEN" || { echo "::error::set the HARNESS_TOKEN repo secret"; exit 1; }
+          git config --global url."https://x-access-token:\${HARNESS_TOKEN}@github.com/Pierre-Mike/factory".insteadOf "ssh://git@github.com/Pierre-Mike/factory"
       - run: bun install --frozen-lockfile
       - run: bunx axioms secret-scan
 
@@ -157,6 +175,15 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.6
+      # The harness repo is private. bun hands its git+ssh spec to git, and this rewrites that URL to
+      # HTTPS with a read-only token scoped to the factory repo (the HARNESS_TOKEN secret).
+      - name: harness access
+        id: harness-access
+        env:
+          HARNESS_TOKEN: \${{ secrets.HARNESS_TOKEN }}
+        run: |
+          test -n "$HARNESS_TOKEN" || { echo "::error::set the HARNESS_TOKEN repo secret"; exit 1; }
+          git config --global url."https://x-access-token:\${HARNESS_TOKEN}@github.com/Pierre-Mike/factory".insteadOf "ssh://git@github.com/Pierre-Mike/factory"
       - run: bun install --frozen-lockfile
       - run: bunx axioms pr-body
 `

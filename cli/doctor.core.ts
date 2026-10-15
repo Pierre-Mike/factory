@@ -14,6 +14,8 @@ export const HARNESS_TSCONFIG = `${HARNESS_PACKAGE}/tsconfig`
 export const TSCONFIG_BASE = "tsconfig.base.json"
 export const CLAUDE_SETTINGS = ".claude/settings.json"
 export const CLAUDE_SKILLS_DIR = ".claude/skills"
+/** The `id:` of the CI step that lets git fetch the private harness (see `releaseSpec`). */
+export const HARNESS_ACCESS_ID = "harness-access"
 
 export interface Finding {
   readonly rule: string
@@ -234,6 +236,8 @@ const checkClaudeConfig = (input: DoctorInput): Finding[] => {
 }
 
 const LOCAL_SPEC = /^(file|link|portal|workspace):/
+/** Specs bun fetches as an anonymous API tarball, which a private repo answers with a 404. */
+const ANONYMOUS_SPEC = /^(github:|(git\+)?https:\/\/github\.com\/)Pierre-Mike\/factory\b/
 
 const checkPackage = (input: {
   readonly pkg: unknown
@@ -256,6 +260,12 @@ const checkPackage = (input: {
       rule: "package",
       problem: `${HARNESS_PACKAGE} is pinned to a local path (${spec}), which a CI runner cannot install`,
       remedy: `pin a released tag: bun add -d ${HARNESS_PACKAGE}@${pinned}`,
+    })
+  } else if (typeof spec === "string" && ANONYMOUS_SPEC.test(spec)) {
+    findings.push({
+      rule: "package",
+      problem: `${HARNESS_PACKAGE} is pinned as ${spec}, which bun fetches without credentials and the private repo refuses`,
+      remedy: `pin it through git: bun add -d ${HARNESS_PACKAGE}@${pinned}`,
     })
   }
   const scripts = field({ value: input.pkg, key: "scripts" })
@@ -415,6 +425,20 @@ const checkCi = (input: { readonly ci: unknown; readonly profile: HarnessProfile
       problem: `ci.yml never runs \`axioms ${gate}\` as a step that must pass`,
       remedy: `add a step \`run: bunx axioms ${gate}\` with no if: or continue-on-error:`,
     }))
+  for (const [name, job] of isRecord(jobsField) ? Object.entries(jobsField) : []) {
+    const jobSteps = isRecord(job) && Array.isArray(job.steps) ? job.steps.filter(isRecord) : []
+    const install = jobSteps.findIndex(
+      (step) => typeof step.run === "string" && /\bbun (install|i)\b/.test(step.run),
+    )
+    const access = jobSteps.findIndex((step) => step.id === HARNESS_ACCESS_ID)
+    if (install !== -1 && (access === -1 || access > install)) {
+      findings.push({
+        rule: "ci",
+        problem: `job ${name} runs bun install without the \`${HARNESS_ACCESS_ID}\` step before it, so it cannot fetch the private harness`,
+        remedy: `copy the \`id: ${HARNESS_ACCESS_ID}\` step from the factory template's ci.yml above bun install`,
+      })
+    }
+  }
   const uses = [...jobs, ...steps.map(({ step }) => step)].flatMap((node) =>
     typeof node.uses === "string" ? [node.uses] : [],
   )
