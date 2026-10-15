@@ -17,8 +17,8 @@ The harness owns two more whole-file copies, distributed like the notes README:
 
 - `harness/skills/` is the factory's skills directory. `axioms sync` copies every file in it, its
   README included, into a project's `.claude/skills/`, where Claude Code discovers project skills.
-  It ships empty except for the README on purpose: the mechanism lands first, and each actual
-  skill (peer review is the first candidate) lands later as an ordinary factory release.
+  Each skill lands as an ordinary factory release; the ones that ship, and why, are in
+  [the harness ships tdd, peer-review and pull-request skills](./2026-10-15-harness-skills-tdd-review-pr.md).
 - `harness/claude.settings.json` is the source of a project's `.claude/settings.json`. It holds a
   permissions allowlist covering the project's own gate commands and nothing broader: the
   template's deterministic scripts (`bun run check`, `smoke`, `dev`, `lint`, `deploy:dry`,
@@ -77,8 +77,7 @@ and an empty mechanism keeps the first skill a content-only change. The seeded R
   `.claude/settings.local.json`; a project that needs a shared entry changes
   `harness/claude.settings.json` in the factory.
 - Removing a skill from `harness/skills/` stops the drift check for its files but does not delete
-  project copies. No skill exists yet, so this stays theoretical; revisit when the first removal
-  happens.
+  project copies. No skill has been removed yet; revisit when the first removal happens.
 - The allowlist names script invocations such as `bun run check`, so what they run is only as
   fixed as `package.json`. Doctor already pins the `check` and `smoke` scripts to
   `axioms check` and `axioms smoke`.

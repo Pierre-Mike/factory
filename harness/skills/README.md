@@ -11,5 +11,12 @@ A skill is a folder holding a `SKILL.md` and the files it references. To add or 
 leave files alone that the harness does not own, so a project may keep its own skills in the same
 directory.
 
-The directory holds no skills yet. The mechanism ships first; the first real skill is a factory
-change that reaches every project with a version bump plus `bunx axioms sync`.
+The harness ships these skills:
+
+- `tdd`: test-first work across the core, route and smoke test layers.
+- `peer-review`: a report-only review on three axes: canon standards, the owning Agent Note, and
+  gate integrity.
+- `pull-request`: a PR body built from `.github/PULL_REQUEST_TEMPLATE.md`, checked with
+  `axioms pr-body` before it is posted.
+
+Each skill's `CREDITS.md` names the open-source skills it adapts and carries their licenses.
