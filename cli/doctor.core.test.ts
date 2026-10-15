@@ -39,6 +39,11 @@ const healthy: DoctorInput = {
   claudeMd: "@AGENTS.md\n",
   notesRules: "# Agent Notes\n",
   notesReadme: "# Agent Notes\n",
+  harnessSettings: '{ "permissions": { "allow": [] } }\n',
+  claudeSettings: '{ "permissions": { "allow": [] } }\n',
+  skillCopies: [
+    { path: "README.md", harness: "# Harness skills\n", project: "# Harness skills\n" },
+  ],
   pkg: {
     devDependencies: { [HARNESS_PACKAGE]: "github:Pierre-Mike/factory#v0.3.0" },
     scripts: { check: "axioms check", smoke: "axioms smoke" },
@@ -123,6 +128,25 @@ describe("runDoctor", () => {
     expect(rules({ ...healthy, notesReadme: null })).toEqual(["notes"])
     expect(rules({ ...healthy, notesReadme: "# Our own rules\n" })).toEqual(["notes"])
     expect(rules({ ...healthy, notesRules: "# Newer rules\n" })).toEqual(["notes"])
+  })
+
+  it("flags a .claude/settings.json that is missing or differs from the harness", () => {
+    expect(rules({ ...healthy, claudeSettings: null })).toEqual(["settings"])
+    expect(rules({ ...healthy, claudeSettings: "{}\n" })).toEqual(["settings"])
+    expect(rules({ ...healthy, harnessSettings: '{ "newer": true }\n' })).toEqual(["settings"])
+  })
+
+  it("flags each harness skill file a project misses or edited, naming the path", () => {
+    const skill = { path: "peer-review/SKILL.md", harness: "# Peer review\n" }
+    expect(
+      rules({ ...healthy, skillCopies: [...healthy.skillCopies, { ...skill, project: null }] }),
+    ).toEqual(["skills"])
+    const edited = runDoctor({
+      ...healthy,
+      skillCopies: [{ ...skill, project: "# Edited\n" }, ...healthy.skillCopies],
+    })
+    expect(edited.map((f) => f.rule)).toEqual(["skills"])
+    expect(edited[0]?.problem).toContain(".claude/skills/peer-review/SKILL.md")
   })
 
   it("flags a missing harness dependency or rewired scripts", () => {

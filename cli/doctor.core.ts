@@ -12,6 +12,8 @@ export const HARNESS_BIOME = `${HARNESS_PACKAGE}/biome`
 export const HARNESS_LEFTHOOK = `node_modules/${HARNESS_PACKAGE}/harness/lefthook.yml`
 export const HARNESS_TSCONFIG = `${HARNESS_PACKAGE}/tsconfig`
 export const TSCONFIG_BASE = "tsconfig.base.json"
+export const CLAUDE_SETTINGS = ".claude/settings.json"
+export const CLAUDE_SKILLS_DIR = ".claude/skills"
 
 export interface Finding {
   readonly rule: string
@@ -29,6 +31,15 @@ export interface DoctorInput {
   /** harness/notes.md, and the project's copy at .agents/notes/README.md (`null` when missing). */
   readonly notesRules: string
   readonly notesReadme: string | null
+  /** harness/claude.settings.json, and the project's copy at .claude/settings.json (`null` when missing). */
+  readonly harnessSettings: string
+  readonly claudeSettings: string | null
+  /** Each file of harness/skills/, with the project's copy at .claude/skills/<path> (`null` when missing). */
+  readonly skillCopies: ReadonlyArray<{
+    readonly path: string
+    readonly harness: string
+    readonly project: string | null
+  }>
   readonly pkg: unknown
   readonly workspaceDirs: ReadonlyArray<string>
   readonly tsconfigReferences: ReadonlyArray<string>
@@ -178,6 +189,35 @@ const checkAgentDocs = (input: DoctorInput): Finding[] => {
     })
   }
   return findings
+}
+
+/** The Claude Code settings and skills are whole-file harness copies, like the notes README: a local edit is drift. */
+const checkClaudeConfig = (input: DoctorInput): Finding[] => {
+  const settings: Finding[] =
+    input.claudeSettings === input.harnessSettings
+      ? []
+      : [
+          {
+            rule: "settings",
+            problem:
+              input.claudeSettings === null
+                ? `${CLAUDE_SETTINGS} is missing, so agents run the gates without the shared permission allowlist`
+                : `${CLAUDE_SETTINGS} differs from the installed harness`,
+            remedy:
+              "run `bunx axioms sync` (edit harness/claude.settings.json in the factory; personal settings go in .claude/settings.local.json)",
+          },
+        ]
+  const skills = input.skillCopies
+    .filter((copy) => copy.project !== copy.harness)
+    .map((copy) => ({
+      rule: "skills",
+      problem:
+        copy.project === null
+          ? `${CLAUDE_SKILLS_DIR}/${copy.path} is missing`
+          : `${CLAUDE_SKILLS_DIR}/${copy.path} differs from the installed harness`,
+      remedy: "run `bunx axioms sync` (edit harness/skills/ in the factory to change a skill)",
+    }))
+  return [...settings, ...skills]
 }
 
 const LOCAL_SPEC = /^(file|link|portal|workspace):/
@@ -394,6 +434,7 @@ export const runDoctor = (input: DoctorInput): Finding[] => [
   ...checkBiome({ biome: input.biome, nestedConfigs: input.nestedBiomeConfigs }),
   ...checkLefthook(input.lefthook),
   ...checkAgentDocs(input),
+  ...checkClaudeConfig(input),
   ...checkPackage(input),
   ...checkTypecheckGraph(input),
   ...checkTsconfigs(input.tsconfigs),

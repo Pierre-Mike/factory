@@ -81,6 +81,11 @@ shared/                        # effect Schema contracts used by server and web
   config exists, when a CI gate is missing, skippable or allowed to fail, and when a tsconfig
   stops extending the harness or sets a strict check (`strict`, `noUncheckedIndexedAccess` and
   the rest) to `false`. Fix the type error instead.
+- `.claude/settings.json` and `.claude/skills/` are copies owned by the harness: the shared
+  permission allowlist (the project's own gate commands, nothing broader) and the shared agent
+  skills. `bunx axioms sync` installs them and `axioms doctor` fails when a copy is missing or
+  differs. Change them in the factory (`harness/claude.settings.json`, `harness/skills/`); put
+  personal permissions in `.claude/settings.local.json`, which stays untracked.
 
 ## Decisions: Agent Notes
 
@@ -158,5 +163,5 @@ bun run deploy:dry # bundle the worker and apply migrations locally, no Cloudfla
 bun run ci:dry     # replay ci.yml on a clean clone (pre-push does this for CI/CD changes)
 bun run deploy     # refuse on placeholders, dry-run, apply D1 migrations remotely, wrangler deploy
 bunx axioms notes  # check .agents/notes (--seal after archiving a note)
-bunx axioms sync   # rewrite this section, the note rules and the hook config from the harness
+bunx axioms sync   # rewrite this section, the note rules, the hook config and .claude settings + skills
 ```

@@ -32,7 +32,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
   axioms doctor                         check that every harness gate is wired
-  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, biome.json, lefthook.yml
+  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, .claude settings + skills, biome.json, lefthook.yml
   axioms hooks                          install the git hooks (runs on bun install)
   axioms commit-msg <file>              conventional-commit check (git hook)
   axioms biome|tsc <args>               run the pinned tool`
