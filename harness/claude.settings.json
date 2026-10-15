@@ -13,6 +13,7 @@
       "Bash(bunx axioms sync)",
       "Bash(bunx axioms notes)",
       "Bash(bunx axioms notes --seal)",
+      "Bash(bunx axioms secret-scan --staged)",
       "Bash(bunx axioms commit-msg:*)",
       "Bash(bunx axioms biome check --write --no-errors-on-unmatched:*)",
       "Bash(bunx axioms ci-dry-run)"
