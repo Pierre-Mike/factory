@@ -16,6 +16,7 @@ import { smoke } from "./commands/smoke"
 import { sync } from "./commands/sync"
 import { lintWorkflows } from "./commands/workflows"
 import { commitSubjectProblem } from "./commit-msg.core"
+import { parseDeployArgs } from "./deploy.core"
 import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
 
 const HELP = `axioms ${harnessVersion()}
@@ -57,9 +58,12 @@ switch (command) {
   case "smoke":
     exit(await smoke(root))
     break
-  case "deploy":
-    exit(await deploy({ root, dryRun: args.includes("--dry-run") }))
+  case "deploy": {
+    const parsed = parseDeployArgs(args)
+    if (!parsed.ok) fail(parsed.error)
+    else exit(await deploy({ root, dryRun: parsed.dryRun }))
     break
+  }
   case "ci-dry-run":
     exit(await ciDryRun({ root, all: args.includes("--all") }))
     break

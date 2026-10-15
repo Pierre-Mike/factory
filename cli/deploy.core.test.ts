@@ -1,5 +1,18 @@
 import { describe, expect, it } from "bun:test"
-import { deployBlockers } from "./deploy.core"
+import { deployBlockers, parseDeployArgs } from "./deploy.core"
+
+describe("parseDeployArgs", () => {
+  it("deploys for real with no arguments and dry-runs with --dry-run", () => {
+    expect(parseDeployArgs([])).toEqual({ ok: true, dryRun: false })
+    expect(parseDeployArgs(["--dry-run"])).toEqual({ ok: true, dryRun: true })
+  })
+
+  it("refuses anything else, so --help or a typo never deploys", () => {
+    for (const args of [["--help"], ["-h"], ["--dryrun"], ["--dry"], ["--dry-run", "--force"]]) {
+      expect(parseDeployArgs(args).ok).toBe(false)
+    }
+  })
+})
 
 const ready = {
   main: "src/worker.ts",

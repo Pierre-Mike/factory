@@ -1,6 +1,12 @@
 language js
 
 // The functional core returns failures as values. Loaded for *.core.ts only (see biome.rules.ts).
-`throw $expr` where {
-  register_diagnostic(span=$expr, message="axioms: *.core.ts must not throw. Return Result.fail, Option.none() or a Data tagged union instead.")
+// Schema's sync decoders throw a ParseError without a `throw` in sight, and shared/src uses them,
+// so they are the throw an agent copies in by accident. decodeUnknownResult is the core's form.
+or {
+  `throw $expr`,
+  `$schema.decodeUnknownSync($expr)`,
+  `$schema.decodeSync($expr)`
+} where {
+  register_diagnostic(span=$expr, message="axioms: *.core.ts must not throw. Return Result.fail, Option.none() or a Data tagged union instead. To decode, use Schema.decodeUnknownResult.")
 }

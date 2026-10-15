@@ -34,6 +34,26 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     expect: ["must not throw"],
   },
   {
+    path: `${F}/ds/ds.core.ts`,
+    code: 'import { Schema } from "effect"\n\nexport const d = (u: unknown) => Schema.decodeUnknownSync(Schema.String)(u)\n',
+    expect: ["must not throw"],
+  },
+  {
+    path: `${F}/ds2/ds2.core.ts`,
+    code: 'import { Schema as S } from "effect"\n\nexport const d = (u: string) => S.decodeSync(S.String)(u)\n',
+    expect: ["must not throw"],
+  },
+  {
+    path: `${F}/dr/dr.core.ts`,
+    code: 'import { Schema } from "effect"\n\nexport const d = (u: unknown) => Schema.decodeUnknownResult(Schema.String)(u)\n',
+    expect: [],
+  },
+  {
+    path: `${F}/ds/ds.io.ts`,
+    code: 'import { Schema } from "effect"\n\nexport const d = (u: unknown) => Schema.decodeUnknownSync(Schema.String)(u)\n',
+    expect: [],
+  },
+  {
     path: `${F}/c/c.core.ts`,
     code: "export const f = async () => {\n  await 1\n}\n",
     expect: ["synchronous"],

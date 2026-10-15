@@ -39,7 +39,8 @@ shared/                        # effect Schema contracts used by server and web
 - In `*.core.ts`, Biome bans named imports of `Effect`/`Layer`/`Context` from `effect` and imports
   of their subpaths (`effect/Effect`), `*.io` and `*.door` imports, `Date`, `performance`,
   `crypto` (the global and the `node:crypto` import), `Promise`, `console` and timers. Grit
-  plugins ban `throw`, `await` and `Math.random()` there.
+  plugins ban `throw`, the throwing `Schema.decodeSync`/`decodeUnknownSync` (use
+  `decodeUnknownResult`), `await` and `Math.random()` there.
 - No `biome-ignore`, `@ts-ignore`, `@ts-expect-error` or `@ts-nocheck` outside tests. The
   `suppressions` gate of `axioms check` fails on them. Fix the code, or change the rule in the
   harness.

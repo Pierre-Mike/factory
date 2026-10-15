@@ -5,6 +5,23 @@
  */
 import { isRecord } from "./doctor.core"
 
+export const DEPLOY_USAGE = "usage: axioms deploy [--dry-run]"
+
+/**
+ * Only `--dry-run` is accepted. Anything else (`--help`, `--dryrun`) is refused instead of read as
+ * "no --dry-run", which would deploy for real.
+ */
+export const parseDeployArgs = (
+  args: ReadonlyArray<string>,
+):
+  | { readonly ok: true; readonly dryRun: boolean }
+  | { readonly ok: false; readonly error: string } => {
+  const unknown = args.find((arg) => arg !== "--dry-run")
+  return unknown === undefined
+    ? { ok: true, dryRun: args.length > 0 }
+    : { ok: false, error: `unexpected argument ${unknown}\n${DEPLOY_USAGE}` }
+}
+
 const PLACEHOLDER_ID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/
 const PLACEHOLDER_VALUE = /REPLACE-ME/
 
