@@ -39,7 +39,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms secret-scan [--staged]         gitleaks on the committed history, or the staged changes
   axioms doctor                         check that every harness gate is wired
   axioms rules [--apply]                branch protection from harness/github.rules.json (--apply writes it via gh)
-  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, biome.json, lefthook.yml
+  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, .claude settings + skills, biome.json, lefthook.yml
   axioms hooks                          install the git hooks (runs on bun install)
   axioms commit-msg <file>              conventional-commit check (git hook)
   axioms biome|tsc <args>               run the pinned tool`

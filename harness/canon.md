@@ -98,6 +98,11 @@ shared/                        # effect Schema contracts used by server and web
   the file. When doctor cannot read the rules (no GitHub remote yet, gh missing or not
   authenticated, or a private repo on a plan without rulesets), it reports what it could not
   verify and why instead of failing.
+- `.claude/settings.json` and `.claude/skills/` are copies owned by the harness: the shared
+  permission allowlist (the project's own gate commands, nothing broader) and the shared agent
+  skills. `bunx axioms sync` installs them and `axioms doctor` fails when a copy is missing or
+  differs. Change them in the factory (`harness/claude.settings.json`, `harness/skills/`); put
+  personal permissions in `.claude/settings.local.json`, which stays untracked.
 
 ## Decisions: Agent Notes
 
@@ -177,5 +182,5 @@ bun run deploy     # refuse on placeholders, dry-run, apply D1 migrations remote
 bunx axioms notes  # check .agents/notes (--seal after archiving a note)
 bunx axioms pr-body draft.md  # check a drafted PR body fills the PR template (CI checks the real one)
 bunx axioms rules --apply # create or update the GitHub branch ruleset from the harness (needs gh)
-bunx axioms sync   # rewrite this section, the note rules and the hook config from the harness
+bunx axioms sync   # rewrite this section, the note rules, the hook config and .claude settings + skills
 ```

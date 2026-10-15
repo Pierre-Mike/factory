@@ -1,13 +1,20 @@
 /**
  * `axioms sync`: make the project's copies of the harness match the installed version. Rewrites
  * the canon block in AGENTS.md and the Agent Note rules in .agents/notes/README.md, points
- * CLAUDE.md at AGENTS.md, and makes biome.json and lefthook.yml extend the harness. Run after `bun update @pierre-mike/axioms`.
+ * CLAUDE.md at AGENTS.md, installs the Claude Code settings and skills under .claude/, and makes
+ * biome.json and lefthook.yml extend the harness. Run after `bun update @pierre-mike/axioms`.
  */
 import { join } from "node:path"
 import { writeCanon } from "../canon.core"
-import { BIOME_FILE_INCLUDES, HARNESS_BIOME, HARNESS_LEFTHOOK } from "../doctor.core"
+import {
+  BIOME_FILE_INCLUDES,
+  CLAUDE_SETTINGS,
+  CLAUDE_SKILLS_DIR,
+  HARNESS_BIOME,
+  HARNESS_LEFTHOOK,
+} from "../doctor.core"
 import { NOTES_DIR } from "../notes.core"
-import { HARNESS_DIR, readText, run, toolPath } from "../shell"
+import { HARNESS_DIR, harnessSkillFiles, readText, run, toolPath } from "../shell"
 
 export const sync = async (root: string): Promise<void> => {
   const canon = readText(join(HARNESS_DIR, "canon.md")) ?? ""
@@ -22,6 +29,17 @@ export const sync = async (root: string): Promise<void> => {
   const claude = readText(claudePath) ?? ""
   if (!claude.includes("@AGENTS.md")) {
     await Bun.write(claudePath, `@AGENTS.md\n${claude === "" ? "" : `\n${claude}`}`)
+  }
+
+  // The Claude Code settings and skills are harness copies too: the permission allowlist for the
+  // project's own gate commands, and the shared skills directory with its README. Personal
+  // settings belong in .claude/settings.local.json, which sync never touches.
+  await Bun.write(
+    join(root, CLAUDE_SETTINGS),
+    readText(join(HARNESS_DIR, "claude.settings.json")) ?? "",
+  )
+  for (const file of await harnessSkillFiles()) {
+    await Bun.write(join(root, CLAUDE_SKILLS_DIR, file.path), file.text)
   }
 
   // `files` is rewritten too: a project-specific include list could hide code from the linter.
@@ -56,6 +74,6 @@ export const sync = async (root: string): Promise<void> => {
     await run({ cmd: ["bun", toolPath("lefthook"), "install"], cwd: root })
   }
   console.error(
-    "✓ synced AGENTS.md, CLAUDE.md, .agents/notes/README.md, biome.json and lefthook.yml with the harness",
+    "✓ synced AGENTS.md, CLAUDE.md, .agents/notes/README.md, .claude/settings.json, .claude/skills, biome.json and lefthook.yml with the harness",
   )
 }

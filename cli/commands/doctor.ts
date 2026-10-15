@@ -3,6 +3,8 @@ import { existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import ts from "typescript"
 import {
+  CLAUDE_SETTINGS,
+  CLAUDE_SKILLS_DIR,
   type DoctorInput,
   type Finding,
   isRecord,
@@ -12,7 +14,7 @@ import {
 } from "../doctor.core"
 import { NOTES_DIR } from "../notes.core"
 import { checkGithubRules, githubNotice } from "../rules.core"
-import { HARNESS_DIR, harnessVersion, readJson, readText } from "../shell"
+import { HARNESS_DIR, harnessSkillFiles, harnessVersion, readJson, readText } from "../shell"
 import { readGithubInput } from "./github"
 
 const listDir = (path: string): string[] => (existsSync(path) ? readdirSync(path) : [])
@@ -116,6 +118,13 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     claudeMd: readText(join(root, "CLAUDE.md")),
     notesRules: readText(join(HARNESS_DIR, "notes.md")) ?? "",
     notesReadme: readText(join(root, NOTES_DIR, "README.md")),
+    harnessSettings: readText(join(HARNESS_DIR, "claude.settings.json")) ?? "",
+    claudeSettings: readText(join(root, CLAUDE_SETTINGS)),
+    skillCopies: (await harnessSkillFiles()).map((file) => ({
+      path: file.path,
+      harness: file.text,
+      project: readText(join(root, CLAUDE_SKILLS_DIR, file.path)),
+    })),
     pkg,
     workspaceDirs: workspaceDirs({ root, pkg }),
     tsconfigReferences: refs.flatMap((ref) =>

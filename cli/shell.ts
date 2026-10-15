@@ -71,6 +71,18 @@ export const runTool = (input: {
 export const readText = (path: string): string | null =>
   existsSync(path) ? readFileSync(path, "utf8") : null
 
+/** Every file under harness/skills/ with its content, sorted by path: what `axioms sync` installs into a project's .claude/skills/. */
+export const harnessSkillFiles = async (): Promise<
+  ReadonlyArray<{ readonly path: string; readonly text: string }>
+> => {
+  const dir = join(HARNESS_DIR, "skills")
+  const paths: string[] = []
+  for await (const path of new Bun.Glob("**/*").scan({ cwd: dir })) paths.push(path)
+  return Promise.all(
+    paths.sort().map(async (path) => ({ path, text: await Bun.file(join(dir, path)).text() })),
+  )
+}
+
 export const readJson = (path: string): unknown => {
   const text = readText(path)
   if (text === null) return null
