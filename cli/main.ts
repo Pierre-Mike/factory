@@ -4,6 +4,7 @@
  * the per-project scripts the template used to copy (and then drift from).
  */
 
+import { adopt } from "./commands/adopt"
 import { check } from "./commands/check"
 import { deploy } from "./commands/deploy"
 import { dev } from "./commands/dev"
@@ -23,6 +24,8 @@ const HELP = `axioms ${harnessVersion()}
 
   axioms new <dir> [--harness <spec>] [--no-install]
                                         create a project from the template (pins the release tag)
+  axioms adopt [--harness <spec>] [--no-install]
+                                        bring the lite harness to an existing repo (no app template)
   axioms slice <feature> [--door]       add a feature slice
   axioms dev                            wrangler dev (:8787) + vite (:5173)
   axioms check                          lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, dupes
@@ -45,6 +48,9 @@ const exit = (ok: boolean) => process.exit(ok ? 0 : 1)
 switch (command) {
   case "new":
     await newProject(args)
+    break
+  case "adopt":
+    await adopt({ root, args })
     break
   case "slice":
     await slice({ root, args })
