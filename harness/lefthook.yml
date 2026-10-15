@@ -3,6 +3,9 @@
 pre-commit:
   piped: true
   jobs:
+    # No secret enters a commit: gitleaks scans the staged changes before anything else runs.
+    - name: secret-scan
+      run: bunx axioms secret-scan --staged
     - name: biome
       glob: "*.{ts,tsx,js,jsx,json,jsonc}"
       run: bunx axioms biome check --write --no-errors-on-unmatched {staged_files}

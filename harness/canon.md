@@ -74,6 +74,10 @@ shared/                        # effect Schema contracts used by server and web
 - Every PR runs `axioms deploy --dry-run` (the worker bundled exactly as `wrangler deploy` would,
   every migration applied to a fresh D1) and `axioms lint-workflows`. A real `axioms deploy`
   refuses while placeholders remain in `wrangler.jsonc`.
+- No secret leaves the machine. The pre-commit hook runs gitleaks on the staged changes
+  (`axioms secret-scan --staged`), and the `secret-scan` job on every PR scans the committed
+  history. A missing gitleaks fails the gate instead of skipping it (`brew install gitleaks`); a
+  false positive is silenced by fingerprint in `.gitleaksignore`, never by removing the hook.
 - The harness is pinned to a released tag (`github:Pierre-Mike/factory#vX.Y.Z`), never a local
   path, because a CI runner cannot install a path that only exists on one machine.
 - `axioms doctor` fails when a part of this harness is missing or unwired, when `biome.json` adds

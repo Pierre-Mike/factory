@@ -86,6 +86,28 @@ await step({
 })
 await step({ name: "stage the slice", cmd: ["git", "add", "-A"], cwd: app })
 await step({ name: "commit the slice", cmd: ["git", "commit", "-qm", "feat: widgets"], cwd: app })
+
+// A staged secret must never reach a commit. The fake token is assembled at runtime so the
+// factory's own history never contains a string its own secret scan would flag.
+const secretsPath = join(app, "secrets.txt")
+const fakeToken = ["ghp", "Zk9pQ4rT8wY3nB6vC1mD5sF0hJ2aL4eX7Gq2"].join("_")
+await Bun.write(secretsPath, `github_token = "${fakeToken}"\n`)
+await step({ name: "stage a fake secret", cmd: ["git", "add", "secrets.txt"], cwd: app })
+await step({
+  name: "secret-scan flags the staged secret",
+  cmd: ["bun", cli, "secret-scan", "--staged"],
+  cwd: app,
+  expectFailure: true,
+})
+await step({
+  name: "pre-commit hook blocks the staged secret",
+  cmd: ["git", "commit", "-qm", "feat: add config"],
+  cwd: app,
+  expectFailure: true,
+})
+await step({ name: "unstage the fake secret", cmd: ["git", "reset", "-q"], cwd: app })
+rmSync(secretsPath)
+
 await step({
   name: "ci dry run (every CI job on a clean clone)",
   cmd: ["bun", cli, "ci-dry-run", "--all"],
@@ -115,5 +137,5 @@ await step({
 
 rmSync(workdir, { recursive: true, force: true })
 console.error(
-  "\n✓ selftest: new, check, slice, check, smoke, deploy dry run and CI dry run all behaved",
+  "\n✓ selftest: new, check, slice, check, smoke, secret scan, deploy dry run and CI dry run all behaved",
 )

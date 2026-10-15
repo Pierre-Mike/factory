@@ -17,8 +17,9 @@ bun run ci:dry      # replay ci.yml on a clean clone; pre-push runs it when CI/C
 `new` pins the GitHub tag of the CLI's own version, so that tag must exist. To try an unreleased
 checkout, pass `--harness file:<path>` and set `AXIOMS_ALLOW_LOCAL_HARNESS=1`, as the selftest does.
 
-Every project's CI runs `check`, `smoke`, `deploy-dry-run` and `workflow-lint` (actionlint +
-zizmor). Locally the workflow linters come from `brew install actionlint zizmor`.
+Every project's CI runs `check`, `smoke`, `deploy-dry-run`, `workflow-lint` (actionlint + zizmor)
+and `secret-scan` (gitleaks, also on every commit via the pre-commit hook). Locally the workflow
+linters and the secret scanner come from `brew install actionlint zizmor gitleaks`.
 
 ## What is in here
 

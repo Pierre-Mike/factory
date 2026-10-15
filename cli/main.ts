@@ -11,6 +11,7 @@ import { doctor } from "./commands/doctor"
 import { ciDryRun } from "./commands/dryrun"
 import { newProject } from "./commands/new"
 import { notes } from "./commands/notes"
+import { secretScan } from "./commands/secrets"
 import { slice } from "./commands/slice"
 import { smoke } from "./commands/smoke"
 import { sync } from "./commands/sync"
@@ -31,6 +32,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms deploy [--dry-run]             bundle + migrate locally; without --dry-run, deploy for real
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
+  axioms secret-scan [--staged]         gitleaks on the committed history, or the staged changes
   axioms doctor                         check that every harness gate is wired
   axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, biome.json, lefthook.yml
   axioms hooks                          install the git hooks (runs on bun install)
@@ -69,6 +71,9 @@ switch (command) {
     break
   case "lint-workflows":
     exit(await lintWorkflows(root))
+    break
+  case "secret-scan":
+    exit(await secretScan({ root, staged: args.includes("--staged") }))
     break
   case "notes":
     exit(await notes({ root, seal: args.includes("--seal") }))
