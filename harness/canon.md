@@ -90,6 +90,14 @@ shared/                        # effect Schema contracts used by server and web
   config exists, when a CI gate is missing, skippable or allowed to fail, and when a tsconfig
   stops extending the harness or sets a strict check (`strict`, `noUncheckedIndexedAccess` and
   the rest) to `false`. Fix the type error instead.
+- Branch protection is a file the harness owns: `harness/github.rules.json` requires a pull
+  request with one approving review before merge (so no direct pushes), the ci.yml jobs as
+  required status checks, linear history, and blocks force pushes and deletion of the default
+  branch; repository auto-merge stays on. `bunx axioms rules --apply` writes it to GitHub through
+  `gh api`, and `axioms doctor` fails while the live rules or the auto-merge setting drift from
+  the file. When doctor cannot read the rules (no GitHub remote yet, gh missing or not
+  authenticated, or a private repo on a plan without rulesets), it reports what it could not
+  verify and why instead of failing.
 
 ## Decisions: Agent Notes
 
@@ -168,5 +176,6 @@ bun run ci:dry     # replay ci.yml on a clean clone (pre-push does this for CI/C
 bun run deploy     # refuse on placeholders, dry-run, apply D1 migrations remotely, wrangler deploy
 bunx axioms notes  # check .agents/notes (--seal after archiving a note)
 bunx axioms pr-body draft.md  # check a drafted PR body fills the PR template (CI checks the real one)
+bunx axioms rules --apply # create or update the GitHub branch ruleset from the harness (needs gh)
 bunx axioms sync   # rewrite this section, the note rules and the hook config from the harness
 ```

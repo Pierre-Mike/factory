@@ -30,6 +30,7 @@ from `brew install actionlint zizmor gitleaks`.
 | `harness/grit/` | Grit plugins: no `throw`/`await` in cores, one parameter per declared function, no `.json() as T`. |
 | `harness/canon.md` | The rules every agent loads. `axioms sync` copies them into a project's AGENTS.md. |
 | `harness/notes.md` | The Agent Note rules. `axioms sync` copies them to a project's `.agents/notes/README.md`; `axioms notes` enforces them. |
+| `harness/github.rules.json` | The default branch's GitHub ruleset. `axioms rules --apply` writes it to the repo via `gh api`; `axioms doctor` fails when the live rules or auto-merge drift. |
 | `harness/lefthook.yml` | Git hooks: format and the notes gate on commit, conventional commit messages, `axioms check` on push. |
 | `cli/` | The `axioms` command. Pure logic in `*.core.ts`, file and process work in `commands/`. |
 | `template/` | The app: Hono + Effect on Cloudflare Workers, D1, Vite + React + TanStack served as assets. |
