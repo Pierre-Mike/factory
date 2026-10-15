@@ -11,6 +11,7 @@ import { doctor } from "./commands/doctor"
 import { ciDryRun } from "./commands/dryrun"
 import { newProject } from "./commands/new"
 import { notes } from "./commands/notes"
+import { prBody } from "./commands/pr-body"
 import { secretScan } from "./commands/secrets"
 import { slice } from "./commands/slice"
 import { smoke } from "./commands/smoke"
@@ -28,6 +29,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms dev                            wrangler dev (:8787) + vite (:5173)
   axioms check                          lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, dupes
   axioms notes [--seal]                 check .agents/notes; --seal freezes newly archived notes
+  axioms pr-body [file|-]               check a PR body fills every PR-template section (no arg: the CI pull_request event)
   axioms smoke                          run smoke/ against a local wrangler dev
   axioms deploy [--dry-run]             bundle + migrate locally; without --dry-run, deploy for real
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
@@ -77,6 +79,9 @@ switch (command) {
     break
   case "notes":
     exit(await notes({ root, seal: args.includes("--seal") }))
+    break
+  case "pr-body":
+    exit(await prBody({ root, args }))
     break
   case "doctor":
     exit(await doctor(root))

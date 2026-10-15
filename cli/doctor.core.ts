@@ -303,7 +303,7 @@ const checkTsconfigs = (
     return findings
   })
 
-const CI_GATES = ["check", "smoke", "deploy --dry-run", "lint-workflows", "secret-scan"]
+const CI_GATES = ["check", "smoke", "deploy --dry-run", "lint-workflows", "secret-scan", "pr-body"]
 const PINNED_USES = /^([^\s@]+@[0-9a-f]{40}|\.\/.*)$/
 
 /** A step or job that may be skipped, or may fail without failing CI, does not count as a gate. */
