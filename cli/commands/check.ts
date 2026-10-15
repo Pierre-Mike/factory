@@ -7,6 +7,7 @@ import { missingCoreTests } from "../colocation.core"
 import { run, runTool } from "../shell"
 import { findSuppressions } from "../suppressions.core"
 import { doctor } from "./doctor"
+import { notes } from "./notes"
 
 const IGNORED = /(^|\/)(node_modules|dist|\.wrangler)\//
 
@@ -52,6 +53,7 @@ export const check = async (root: string): Promise<boolean> => {
     ["typecheck", async () => (await runTool({ tool: "tsc", args: ["-b"], cwd: root })) === 0],
     ["colocation", () => colocation(root)],
     ["suppressions", () => suppressions(root)],
+    ["notes", () => notes({ root, seal: false })],
     ["doctor", () => doctor(root)],
     ["test", async () => (await run({ cmd: ["bun", "test"], cwd: root })) === 0],
     [

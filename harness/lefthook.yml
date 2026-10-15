@@ -7,6 +7,10 @@ pre-commit:
       glob: "*.{ts,tsx,js,jsx,json,jsonc}"
       run: bunx axioms biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+    # Any Markdown file can link into .agents/notes, so every staged .md runs the notes gate.
+    - name: agent-notes
+      glob: "*.md"
+      run: bunx axioms notes
 
 commit-msg:
   jobs:

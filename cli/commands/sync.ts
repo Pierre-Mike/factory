@@ -1,11 +1,12 @@
 /**
  * `axioms sync`: make the project's copies of the harness match the installed version. Rewrites
- * the canon block in AGENTS.md, points CLAUDE.md at it, and makes biome.json and lefthook.yml
- * extend the harness. Run after `bun update @pierre-mike/axioms`.
+ * the canon block in AGENTS.md and the Agent Note rules in .agents/notes/README.md, points
+ * CLAUDE.md at AGENTS.md, and makes biome.json and lefthook.yml extend the harness. Run after `bun update @pierre-mike/axioms`.
  */
 import { join } from "node:path"
 import { writeCanon } from "../canon.core"
 import { BIOME_FILE_INCLUDES, HARNESS_BIOME, HARNESS_LEFTHOOK } from "../doctor.core"
+import { NOTES_DIR } from "../notes.core"
 import { HARNESS_DIR, readText, run, toolPath } from "../shell"
 
 export const sync = async (root: string): Promise<void> => {
@@ -13,6 +14,9 @@ export const sync = async (root: string): Promise<void> => {
 
   const agentsPath = join(root, "AGENTS.md")
   await Bun.write(agentsPath, writeCanon({ agentsMd: readText(agentsPath) ?? "", canon }))
+
+  // Bun.write creates .agents/notes/; the lifecycle folders appear with the first note in them.
+  await Bun.write(join(root, NOTES_DIR, "README.md"), readText(join(HARNESS_DIR, "notes.md")) ?? "")
 
   const claudePath = join(root, "CLAUDE.md")
   const claude = readText(claudePath) ?? ""
@@ -51,5 +55,7 @@ export const sync = async (root: string): Promise<void> => {
   if (readText(join(root, ".git", "HEAD")) !== null && harnessInstalled) {
     await run({ cmd: ["bun", toolPath("lefthook"), "install"], cwd: root })
   }
-  console.error("✓ synced AGENTS.md, CLAUDE.md, biome.json and lefthook.yml with the harness")
+  console.error(
+    "✓ synced AGENTS.md, CLAUDE.md, .agents/notes/README.md, biome.json and lefthook.yml with the harness",
+  )
 }

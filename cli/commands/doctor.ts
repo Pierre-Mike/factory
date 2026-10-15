@@ -1,13 +1,16 @@
 /** `axioms doctor`: read the project's harness files and report what is missing or unwired. */
 import { existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
+import ts from "typescript"
 import {
   type DoctorInput,
   type Finding,
   isRecord,
   parseAllowlistedTags,
   runDoctor,
+  TSCONFIG_BASE,
 } from "../doctor.core"
+import { NOTES_DIR } from "../notes.core"
 import { HARNESS_DIR, harnessVersion, readJson, readText } from "../shell"
 
 const listDir = (path: string): string[] => (existsSync(path) ? readdirSync(path) : [])
@@ -90,6 +93,14 @@ const readYaml = (path: string): unknown => {
   }
 }
 
+/** tsconfig files are JSONC (comments allowed), so JSON.parse is not enough. */
+const readTsconfig = (input: { readonly root: string; readonly path: string }) => {
+  const text = readText(join(input.root, input.path))
+  if (text === null) return { path: input.path, config: null }
+  const parsed = ts.parseConfigFileTextToJson(input.path, text)
+  return { path: input.path, config: parsed.error === undefined ? (parsed.config ?? null) : null }
+}
+
 export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
   const pkg = readJson(join(root, "package.json"))
   const tsconfig = readJson(join(root, "tsconfig.json"))
@@ -101,11 +112,17 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     lefthook: readYaml(join(root, "lefthook.yml")),
     agentsMd: readText(join(root, "AGENTS.md")),
     claudeMd: readText(join(root, "CLAUDE.md")),
+    notesRules: readText(join(HARNESS_DIR, "notes.md")) ?? "",
+    notesReadme: readText(join(root, NOTES_DIR, "README.md")),
     pkg,
     workspaceDirs: workspaceDirs({ root, pkg }),
     tsconfigReferences: refs.flatMap((ref) =>
       isRecord(ref) && typeof ref.path === "string" ? [ref.path] : [],
     ),
+    tsconfigs: [
+      TSCONFIG_BASE,
+      ...workspaceDirs({ root, pkg }).map((dir) => `${dir}/tsconfig.json`),
+    ].map((path) => readTsconfig({ root, path })),
     nestedBiomeConfigs: nestedBiomeConfigs(root),
     ciWorkflow: readYaml(join(root, ".github", "workflows", "ci.yml")),
     featureNames: listSubdirs(join(server, "src", "features")),

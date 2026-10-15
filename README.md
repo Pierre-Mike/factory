@@ -27,11 +27,12 @@ zizmor). Locally the workflow linters come from `brew install actionlint zizmor`
 | `harness/biome.rules.ts` | Source of the shared Biome config. `bun run build:biome` writes `biome.shared.json`. |
 | `harness/grit/` | Grit plugins: no `throw`/`await` in cores, one parameter per declared function, no `.json() as T`. |
 | `harness/canon.md` | The rules every agent loads. `axioms sync` copies them into a project's AGENTS.md. |
-| `harness/lefthook.yml` | Git hooks: format on commit, conventional commit messages, `axioms check` on push. |
+| `harness/notes.md` | The Agent Note rules. `axioms sync` copies them to a project's `.agents/notes/README.md`; `axioms notes` enforces them. |
+| `harness/lefthook.yml` | Git hooks: format and the notes gate on commit, conventional commit messages, `axioms check` on push. |
 | `cli/` | The `axioms` command. Pure logic in `*.core.ts`, file and process work in `commands/`. |
 | `template/` | The app: Hono + Effect on Cloudflare Workers, D1, Vite + React + TanStack served as assets. |
 | `tests/rules.test.ts` | Lints fixtures through the shared config and checks each rule fires where it should. |
-| `tests/selftest.ts` | `new`, `sync`, `check`, `slice`, `smoke`, the deploy dry run and the CI dry run on a throwaway project, plus a deliberately broken workflow the CI dry run must catch. |
+| `tests/selftest.ts` | `new`, `sync`, `check`, `slice`, `smoke`, the deploy dry run and the CI dry run on a throwaway project, plus a deliberately broken workflow the CI dry run must catch and a malformed Agent Note the notes gate must reject. |
 
 ## How a project uses it
 
@@ -40,6 +41,8 @@ A project depends on `@pierre-mike/axioms`, pinned to a release tag (`github:Pie
 - `biome.json` extends `@pierre-mike/axioms/biome` and may not add rules (`axioms doctor` checks).
 - `lefthook.yml` extends the harness hooks.
 - `AGENTS.md` holds a copy of `harness/canon.md` between markers; `CLAUDE.md` is `@AGENTS.md`.
+- `.agents/notes/` holds the project's decisions as Agent Notes, so one agent session can find
+  what an earlier one decided. Its `README.md` is a copy of `harness/notes.md`.
 - `tsconfig.base.json` extends `@pierre-mike/axioms/tsconfig`.
 
 To roll out a harness change: tag a release here, bump the dependency in the project, run

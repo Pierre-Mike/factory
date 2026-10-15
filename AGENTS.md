@@ -7,6 +7,9 @@ upgrades, so each change needs a test that proves it.
   fixtures to `tests/rules.test.ts` for both the file shape it should catch and one it should not.
 - A rule agents must follow: put it in `harness/canon.md` and name the tool that enforces it. A rule
   with no enforcement does not go in.
+- Decisions about the factory itself are Agent Notes in `.agents/notes/`, under the rules in
+  `harness/notes.md`. Read the note that owns an area before changing it; `bun run verify` runs
+  the gate.
 - CLI logic is pure in `cli/*.core.ts` with a co-located `*.core.test.ts`. File and process work
   lives in `cli/commands/`.
 - Template changes: run `bun run selftest`. It generates a project and runs every gate plus the

@@ -10,6 +10,7 @@ import { dev } from "./commands/dev"
 import { doctor } from "./commands/doctor"
 import { ciDryRun } from "./commands/dryrun"
 import { newProject } from "./commands/new"
+import { notes } from "./commands/notes"
 import { slice } from "./commands/slice"
 import { smoke } from "./commands/smoke"
 import { sync } from "./commands/sync"
@@ -23,13 +24,14 @@ const HELP = `axioms ${harnessVersion()}
                                         create a project from the template (pins the release tag)
   axioms slice <feature> [--door]       add a feature slice
   axioms dev                            wrangler dev (:8787) + vite (:5173)
-  axioms check                          lint, typecheck, co-location, suppressions, doctor, tests, dead code, dupes
+  axioms check                          lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, dupes
+  axioms notes [--seal]                 check .agents/notes; --seal freezes newly archived notes
   axioms smoke                          run smoke/ against a local wrangler dev
   axioms deploy [--dry-run]             bundle + migrate locally; without --dry-run, deploy for real
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
   axioms doctor                         check that every harness gate is wired
-  axioms sync                           rewrite AGENTS.md, CLAUDE.md, biome.json, lefthook.yml
+  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, biome.json, lefthook.yml
   axioms hooks                          install the git hooks (runs on bun install)
   axioms commit-msg <file>              conventional-commit check (git hook)
   axioms biome|tsc <args>               run the pinned tool`
@@ -63,6 +65,9 @@ switch (command) {
     break
   case "lint-workflows":
     exit(await lintWorkflows(root))
+    break
+  case "notes":
+    exit(await notes({ root, seal: args.includes("--seal") }))
     break
   case "doctor":
     exit(await doctor(root))

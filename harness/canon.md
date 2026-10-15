@@ -77,7 +77,60 @@ shared/                        # effect Schema contracts used by server and web
   path, because a CI runner cannot install a path that only exists on one machine.
 - `axioms doctor` fails when a part of this harness is missing or unwired, when `biome.json` adds
   rules, extends anything besides the harness or narrows `files.includes`, when a nested Biome
-  config exists, and when a CI gate is missing, skippable or allowed to fail.
+  config exists, when a CI gate is missing, skippable or allowed to fail, and when a tsconfig
+  stops extending the harness or sets a strict check (`strict`, `noUncheckedIndexedAccess` and
+  the rest) to `false`. Fix the type error instead.
+
+## Decisions: Agent Notes
+
+Sessions do not share memory. A decision lasts only if it is written down, so every agent that
+works here reads and keeps the Agent Notes in
+`.agents/notes/{proposed,implemented,rejected,archived}/{class}/yyyy-mm-dd-topic.md`. The full
+rules, including archiving, are in `.agents/notes/README.md`.
+
+**Before you change anything**
+
+1. List `.agents/notes/implemented/` and `.agents/notes/proposed/`, and read every note whose topic
+   touches the area you are about to change. An implemented note is the current decision: follow
+   it, or supersede it with a new note. A proposed note is work not yet built. A rejected note says
+   why an idea was turned down. `archived/` is history, not authority.
+2. Find the owner. If a note already covers the decision, update that note. Never write a second
+   note for the same decision.
+
+**When you decide something**
+
+- A lasting decision gets a note in the same commit: new user-visible behavior, a contract shared
+  across files (a `shared/src` schema, an error tag, a route shape), storage or a migration
+  strategy, architecture, tooling or process, test strategy, a non-local bug fix, or any choice a
+  maintainer may revisit. Typos, formatting, local UI tweaks and mechanical edits need none.
+- Work not built yet starts in `proposed/<class>/` with `## Problem`, `## Proposal`,
+  `## Alternatives considered`, `## Acceptance criteria` and `## Risks`. Each acceptance criterion
+  names the check that could prove it false: a `*.core.test.ts`, a `*.routes.test.ts`, a smoke
+  test, or a command such as `bun run deploy:dry`.
+- A decision made and shipped in this change goes straight to `implemented/<class>/` with
+  `## Problem`, `## Decision`, `## Alternatives considered`, `## Consequences` and optionally
+  `## Verification`, in the present tense.
+- Every note starts `# Agent Note: <title>`, a blank line, `Status: <lifecycle>`, a blank line.
+  Classes: `feature`, `bug-fix`, `simplification`, `architecture`, `process`, `testing`. The date
+  in the filename is the day the topic was first proposed and never changes.
+- Record real alternatives only. If there were none, say so in the section.
+
+**When it ships, or changes**
+
+- Promote by rewriting: `git mv` the note to `implemented/`, set `Status: implemented`, turn
+  `## Proposal` into a present-tense `## Decision`, fold acceptance criteria and risks into
+  `## Consequences` and `## Verification` with the commands you ran. Changing only the status word
+  is not a promotion.
+- A declined proposal moves to `rejected/` with `Status: rejected — <reason>`.
+- When code moves a file, renames a module or changes a default an implemented note names, fix
+  the note in the same commit. Reversing a shipped decision takes a new note, linked both ways.
+- When you finish, say which note owns the change and whether you created, updated or promoted it.
+
+`axioms notes` fails on an unknown folder or class, a bad filename, a `Status:` line that
+disagrees with the folder, a missing required section, a proposal heading left in an implemented
+note, a broken link into a notes tree, or an edited archived note. `axioms check`, the pre-commit
+hook and CI run it, and `axioms doctor` fails when `.agents/notes/README.md` differs from the
+harness. Fix the note, never the gate, and never copy a second notes gate into the project.
 
 ## How to add a feature slice
 
@@ -97,11 +150,12 @@ shared/                        # effect Schema contracts used by server and web
 ```bash
 bun install        # installs dependencies and git hooks
 bun run dev        # wrangler dev (API, :8787) + vite (web, :5173)
-bun run check      # lint, typecheck, co-location, suppressions, doctor, tests, dead code, duplication
+bun run check      # lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, duplication
 bun run smoke      # build the web app, start wrangler dev locally, run smoke/ over HTTP
 bun run slice      # generate a feature slice
 bun run deploy:dry # bundle the worker and apply migrations locally, no Cloudflare account needed
 bun run ci:dry     # replay ci.yml on a clean clone (pre-push does this for CI/CD changes)
 bun run deploy     # refuse on placeholders, dry-run, apply D1 migrations remotely, wrangler deploy
-bunx axioms sync   # rewrite this section and the hook config from the installed harness
+bunx axioms notes  # check .agents/notes (--seal after archiving a note)
+bunx axioms sync   # rewrite this section, the note rules and the hook config from the harness
 ```

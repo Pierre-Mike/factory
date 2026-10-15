@@ -54,6 +54,26 @@ await step({
   cwd: app,
 })
 await step({ name: "check (fresh)", cmd: ["bun", cli, "check"], cwd: app })
+
+// A promotion that only flips the status word: the notes gate must reject it, then accept the fix.
+const notePath = join(app, ".agents", "notes", "implemented", "process", "2026-01-01-use-d1.md")
+const note = (body: string) =>
+  `# Agent Note: Use D1\n\nStatus: implemented\n\n## Problem\n\nThe app needs storage.\n\n${body}`
+await Bun.write(notePath, note("## Proposal\n\nUse D1.\n\n## Alternatives considered\n\nNone.\n"))
+await step({
+  name: "notes rejects a proposal promoted by its status word only",
+  cmd: ["bun", cli, "notes"],
+  cwd: app,
+  expectFailure: true,
+})
+await Bun.write(
+  notePath,
+  note(
+    "## Decision\n\nThe app stores data in D1.\n\n## Alternatives considered\n\nNone.\n\n## Consequences\n\nOne vendor.\n",
+  ),
+)
+await step({ name: "notes accepts the rewritten note", cmd: ["bun", cli, "notes"], cwd: app })
+rmSync(join(app, ".agents", "notes", "implemented"), { recursive: true })
 await step({ name: "slice", cmd: ["bun", cli, "slice", "widgets"], cwd: app })
 await step({ name: "check (with slice)", cmd: ["bun", cli, "check"], cwd: app })
 await step({ name: "smoke", cmd: ["bun", cli, "smoke"], cwd: app })

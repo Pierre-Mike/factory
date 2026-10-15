@@ -6,8 +6,10 @@ import {
   HARNESS_BIOME,
   HARNESS_LEFTHOOK,
   HARNESS_PACKAGE,
+  HARNESS_TSCONFIG,
   parseAllowlistedTags,
   runDoctor,
+  TSCONFIG_BASE,
 } from "./doctor.core"
 
 const SHA = "df4cb1c069e1874edd31b4311f1884172cec0e10"
@@ -35,12 +37,22 @@ const healthy: DoctorInput = {
   lefthook: { extends: [HARNESS_LEFTHOOK] },
   agentsMd: writeCanon({ agentsMd: "# App", canon: "the rules" }),
   claudeMd: "@AGENTS.md\n",
+  notesRules: "# Agent Notes\n",
+  notesReadme: "# Agent Notes\n",
   pkg: {
     devDependencies: { [HARNESS_PACKAGE]: "github:Pierre-Mike/factory#v0.3.0" },
     scripts: { check: "axioms check", smoke: "axioms smoke" },
   },
   workspaceDirs: ["apps/server", "shared"],
   tsconfigReferences: ["./apps/server", "./shared"],
+  tsconfigs: [
+    { path: TSCONFIG_BASE, config: { extends: HARNESS_TSCONFIG } },
+    {
+      path: "apps/server/tsconfig.json",
+      config: { extends: "../../tsconfig.base.json", compilerOptions: { lib: ["ES2022"] } },
+    },
+    { path: "shared/tsconfig.json", config: { extends: "../tsconfig.base.json" } },
+  ],
   nestedBiomeConfigs: [],
   ciWorkflow: { jobs: HEALTHY_JOBS },
   featureNames: ["health"],
@@ -107,6 +119,12 @@ describe("runDoctor", () => {
     expect(rules({ ...healthy, claudeMd: null })).toEqual(["canon"])
   })
 
+  it("flags missing or edited Agent Note rules", () => {
+    expect(rules({ ...healthy, notesReadme: null })).toEqual(["notes"])
+    expect(rules({ ...healthy, notesReadme: "# Our own rules\n" })).toEqual(["notes"])
+    expect(rules({ ...healthy, notesRules: "# Newer rules\n" })).toEqual(["notes"])
+  })
+
   it("flags a missing harness dependency or rewired scripts", () => {
     expect(rules({ ...healthy, pkg: { scripts: healthy.pkg } })).toContain("package")
     expect(
@@ -140,6 +158,59 @@ describe("runDoctor", () => {
     expect(rules({ ...healthy, workspaceDirs: ["apps/server", "apps/web", "shared"] })).toEqual([
       "typecheck",
     ])
+  })
+
+  describe("tsconfig strictness", () => {
+    const [base, server, shared] = healthy.tsconfigs
+    const withServer = (config: unknown) => ({
+      ...healthy,
+      tsconfigs: [base!, { path: "apps/server/tsconfig.json", config }, shared!],
+    })
+
+    it("flags a workspace that turns a strict check off", () => {
+      const loose = withServer({
+        extends: "../../tsconfig.base.json",
+        compilerOptions: { noUncheckedIndexedAccess: false },
+      })
+      expect(rules(loose)).toEqual(["typecheck"])
+      expect(runDoctor(loose)[0]?.problem).toContain("noUncheckedIndexedAccess")
+      expect(
+        rules(
+          withServer({ extends: "../../tsconfig.base.json", compilerOptions: { strict: false } }),
+        ),
+      ).toEqual(["typecheck"])
+    })
+
+    it("accepts strict checks set to true, and unrelated options", () => {
+      expect(
+        rules(
+          withServer({
+            extends: "../../tsconfig.base.json",
+            compilerOptions: { strict: true, noUncheckedIndexedAccess: true, rootDir: "." },
+          }),
+        ),
+      ).toEqual([])
+    })
+
+    it("flags a workspace that stops extending the base", () => {
+      expect(rules(withServer({ compilerOptions: { lib: ["ES2022"] } }))).toEqual(["typecheck"])
+      expect(rules(withServer({ extends: "./loose.json" }))).toEqual(["typecheck"])
+    })
+
+    it("accepts a workspace that extends the harness directly, or through an extends array", () => {
+      expect(rules(withServer({ extends: HARNESS_TSCONFIG }))).toEqual([])
+      expect(rules(withServer({ extends: ["../../tsconfig.base.json"] }))).toEqual([])
+    })
+
+    it("flags a base that stops extending the harness, or a missing file", () => {
+      const tsconfigs = (first: unknown) => [
+        { path: TSCONFIG_BASE, config: first },
+        server!,
+        shared!,
+      ]
+      expect(rules({ ...healthy, tsconfigs: tsconfigs({}) })).toEqual(["typecheck"])
+      expect(rules({ ...healthy, tsconfigs: tsconfigs(null) })).toEqual(["typecheck"])
+    })
   })
 
   describe("ci.yml", () => {

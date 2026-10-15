@@ -3,12 +3,15 @@
  * data in. Each check returns findings; an empty list means every gate is present and wired.
  * Deleting a gate becomes a visible failure instead of silent drift.
  */
+import { posix } from "node:path"
 import { extractCanon } from "./canon.core"
 import { releaseSpec } from "./new.core"
 
 export const HARNESS_PACKAGE = "@pierre-mike/axioms"
 export const HARNESS_BIOME = `${HARNESS_PACKAGE}/biome`
 export const HARNESS_LEFTHOOK = `node_modules/${HARNESS_PACKAGE}/harness/lefthook.yml`
+export const HARNESS_TSCONFIG = `${HARNESS_PACKAGE}/tsconfig`
+export const TSCONFIG_BASE = "tsconfig.base.json"
 
 export interface Finding {
   readonly rule: string
@@ -23,9 +26,17 @@ export interface DoctorInput {
   readonly lefthook: unknown
   readonly agentsMd: string | null
   readonly claudeMd: string | null
+  /** harness/notes.md, and the project's copy at .agents/notes/README.md (`null` when missing). */
+  readonly notesRules: string
+  readonly notesReadme: string | null
   readonly pkg: unknown
   readonly workspaceDirs: ReadonlyArray<string>
   readonly tsconfigReferences: ReadonlyArray<string>
+  /**
+   * tsconfig.base.json and each workspace's tsconfig.json, parsed as JSONC (paths relative to the
+   * project root). `config` is `null` when the file is missing or not valid JSONC.
+   */
+  readonly tsconfigs: ReadonlyArray<{ readonly path: string; readonly config: unknown }>
   /** Every biome.json or biome.jsonc below the project root (paths relative to it). */
   readonly nestedBiomeConfigs: ReadonlyArray<string>
   /** The parsed ci.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
@@ -156,6 +167,16 @@ const checkAgentDocs = (input: DoctorInput): Finding[] => {
       remedy: "run `bunx axioms sync`",
     })
   }
+  if (input.notesReadme !== input.notesRules) {
+    findings.push({
+      rule: "notes",
+      problem:
+        input.notesReadme === null
+          ? ".agents/notes/README.md is missing, so agents have no Agent Note rules to follow"
+          : "the Agent Note rules in .agents/notes/README.md differ from the installed harness",
+      remedy: "run `bunx axioms sync` (edit harness/notes.md in the factory to change a rule)",
+    })
+  }
   return findings
 }
 
@@ -210,6 +231,77 @@ const checkTypecheckGraph = (input: DoctorInput): Finding[] => {
       remedy: `add { "path": "./${dir}" } to tsconfig.json references`,
     }))
 }
+
+/**
+ * Checks the harness tsconfig turns on. Setting one to false is how a type error gets "fixed"
+ * without fixing the code, so it gets the same treatment as a suppression comment.
+ */
+const STRICT_FLAGS = [
+  "strict",
+  "noImplicitAny",
+  "strictNullChecks",
+  "strictFunctionTypes",
+  "strictBindCallApply",
+  "strictPropertyInitialization",
+  "strictBuiltinIteratorReturn",
+  "noImplicitThis",
+  "useUnknownInCatchVariables",
+  "alwaysStrict",
+  "noUncheckedIndexedAccess",
+  "noImplicitOverride",
+  "noFallthroughCasesInSwitch",
+]
+
+const extendsOf = (config: unknown): string[] => {
+  const value = field({ value: config, key: "extends" })
+  return typeof value === "string" ? [value] : strings(value)
+}
+
+/** A workspace inherits the harness through the root tsconfig.base.json, or by extending it directly. */
+const reachesHarness = (input: { readonly path: string; readonly config: unknown }) =>
+  extendsOf(input.config).some(
+    (ext) =>
+      ext === HARNESS_TSCONFIG ||
+      (input.path !== TSCONFIG_BASE &&
+        posix.normalize(posix.join(posix.dirname(input.path), ext)) === TSCONFIG_BASE),
+  )
+
+const checkTsconfigs = (
+  tsconfigs: ReadonlyArray<{ readonly path: string; readonly config: unknown }>,
+): Finding[] =>
+  tsconfigs.flatMap(({ path, config }): Finding[] => {
+    if (config === null) {
+      return [
+        {
+          rule: "typecheck",
+          problem: `${path} is missing or not valid JSONC`,
+          remedy: "restore it from the factory template",
+        },
+      ]
+    }
+    const findings: Finding[] = []
+    if (!reachesHarness({ path, config })) {
+      const target =
+        path === TSCONFIG_BASE
+          ? HARNESS_TSCONFIG
+          : posix.relative(posix.dirname(path), TSCONFIG_BASE)
+      findings.push({
+        rule: "typecheck",
+        problem: `${path} does not extend ${target}, so the harness compiler options do not apply`,
+        remedy: `set "extends": "${target}"`,
+      })
+    }
+    const options = field({ value: config, key: "compilerOptions" })
+    const loosened = STRICT_FLAGS.filter((flag) => field({ value: options, key: flag }) === false)
+    if (loosened.length > 0) {
+      findings.push({
+        rule: "typecheck",
+        problem: `${path} turns off ${loosened.join(", ")}, which the harness turns on`,
+        remedy: "remove the override and fix the type errors it was hiding",
+      })
+    }
+    return findings
+  })
 
 const CI_GATES = ["check", "smoke", "deploy --dry-run", "lint-workflows"]
 const PINNED_USES = /^([^\s@]+@[0-9a-f]{40}|\.\/.*)$/
@@ -304,6 +396,7 @@ export const runDoctor = (input: DoctorInput): Finding[] => [
   ...checkAgentDocs(input),
   ...checkPackage(input),
   ...checkTypecheckGraph(input),
+  ...checkTsconfigs(input.tsconfigs),
   ...checkCi(input.ciWorkflow),
   ...checkSmokeCoverage(input),
   ...checkAllowlist(input),
