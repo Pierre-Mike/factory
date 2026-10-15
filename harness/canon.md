@@ -74,6 +74,11 @@ shared/                        # effect Schema contracts used by server and web
 - Every PR runs `axioms deploy --dry-run` (the worker bundled exactly as `wrangler deploy` would,
   every migration applied to a fresh D1) and `axioms lint-workflows`. A real `axioms deploy`
   refuses while placeholders remain in `wrangler.jsonc`.
+- A PR is opened with its body built from `.github/PULL_REQUEST_TEMPLATE.md`: what changed, why,
+  the verification commands run, and the owning Agent Note. `gh pr create` does not auto-fill
+  templates, so construct the body from the file. The `axioms pr-body` gate in CI fails a PR whose
+  body is missing a section or leaves one empty, and `axioms doctor` fails a ci.yml that drops
+  the gate.
 - The harness is pinned to a released tag (`github:Pierre-Mike/factory#vX.Y.Z`), never a local
   path, because a CI runner cannot install a path that only exists on one machine.
 - `axioms doctor` fails when a part of this harness is missing or unwired, when `biome.json` adds
@@ -158,5 +163,6 @@ bun run deploy:dry # bundle the worker and apply migrations locally, no Cloudfla
 bun run ci:dry     # replay ci.yml on a clean clone (pre-push does this for CI/CD changes)
 bun run deploy     # refuse on placeholders, dry-run, apply D1 migrations remotely, wrangler deploy
 bunx axioms notes  # check .agents/notes (--seal after archiving a note)
+bunx axioms pr-body draft.md  # check a drafted PR body fills the PR template (CI checks the real one)
 bunx axioms sync   # rewrite this section, the note rules and the hook config from the harness
 ```
