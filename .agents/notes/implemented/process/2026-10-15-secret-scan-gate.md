@@ -20,10 +20,12 @@ gitleaks guards the two doors a secret can leave through: the commit and the pul
 - The pre-commit hook in `harness/lefthook.yml` runs `axioms secret-scan --staged`
   (`gitleaks git --pre-commit --staged`) as its first job, so a staged secret stops the commit
   before Biome or the notes gate run. Projects inherit it through `extends`, with no sync step.
-- A `secret-scan` CI job in the factory's and the template's `ci.yml` scans the committed history
-  (`gitleaks git`) as a backstop for commits made without the hook. The job is plain `run:` steps,
-  so `axioms ci-dry-run` replays it like every other job. `secret-scan` joins `CI_GATES` in
-  `cli/doctor.core.ts`, so `axioms doctor` fails a project whose CI drops, skips or ignores it.
+- A `secret-scan` CI job in the factory's and the template's `ci.yml`, and in the workflow
+  `axioms adopt` stamps into an existing repo, scans the committed history (`gitleaks git`) as a
+  backstop for commits made without the hook. The job is plain `run:` steps, so
+  `axioms ci-dry-run` replays it like every other job. `secret-scan` is in `CI_GATES` in
+  `cli/doctor.core.ts` for both the `app` and the `lite` profile, so `axioms doctor` fails a
+  project whose CI drops, skips or ignores it, whether it came from the template or from adopt.
 - Output is redacted (`--redact`): a finding names the file, line and rule, never the secret, so
   the scan does not copy the secret into terminals and CI logs.
 - The rule is in `harness/canon.md`; the README names the gate next to actionlint and zizmor.

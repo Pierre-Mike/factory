@@ -1,16 +1,18 @@
 /**
  * `axioms adopt [--harness <spec>] [--no-install]`: bring the lite harness to an existing git
  * repository that did not start from the app template. Stamps the skeleton the core planned
- * (package.json with the pinned harness and the `lite` profile, a one-job CI workflow,
- * .fallowrc.json, .gitignore entries), then hands every synced copy to `axioms sync`: once before
- * the install so the files exist either way, and once after it so sync's own formatting and hook
- * installation run with the harness in node_modules.
+ * (package.json with the pinned harness and the `lite` profile, a CI workflow running check,
+ * secret-scan and pr-body, the template's PR template, .fallowrc.json, .gitignore entries), then
+ * hands every synced copy to `axioms sync`: once before the install so the files exist either
+ * way, and once after it so sync's own formatting and hook installation run with the harness in
+ * node_modules.
  */
 import { existsSync } from "node:fs"
 import { basename, join } from "node:path"
 import { parseAdoptArgs, planAdopt } from "../adopt.core"
 import { releaseSpec } from "../new.core"
-import { fail, harnessVersion, readJson, readText, run, runTool } from "../shell"
+import { fail, harnessVersion, readJson, readText, run, runTool, TEMPLATE_DIR } from "../shell"
+import { PR_TEMPLATE_PATH } from "./pr-body"
 import { sync } from "./sync"
 
 /** The branch the stamped CI triggers on: the current one, or `main` when HEAD is detached. */
@@ -38,11 +40,15 @@ export const adopt = async (input: {
     pkg: readJson(join(root, "package.json")),
     gitignore: readText(join(root, ".gitignore")),
     hasCiWorkflow: existsSync(join(root, ".github", "workflows", "ci.yml")),
+    hasPrTemplate: existsSync(join(root, PR_TEMPLATE_PATH)),
     hasFallowrc: existsSync(join(root, ".fallowrc.json")),
     hasGitDir: existsSync(join(root, ".git")),
     dirName: basename(root),
     harnessSpec: harness ?? releaseSpec(harnessVersion()),
     defaultBranch: defaultBranch(root),
+    prTemplate:
+      readText(join(TEMPLATE_DIR, PR_TEMPLATE_PATH)) ??
+      fail(`the installed harness has no template/${PR_TEMPLATE_PATH}; reinstall it`),
   })
   if (!plan.ok) return fail(plan.error)
   const writes = plan.writes
@@ -52,6 +58,7 @@ export const adopt = async (input: {
   if (writes.ciWorkflow !== null) {
     await Bun.write(join(root, ".github", "workflows", "ci.yml"), writes.ciWorkflow)
   }
+  if (writes.prTemplate !== null) await Bun.write(join(root, PR_TEMPLATE_PATH), writes.prTemplate)
   if (writes.fallowrc !== null) await Bun.write(join(root, ".fallowrc.json"), writes.fallowrc)
 
   // Everything synced (AGENTS.md canon, CLAUDE.md, notes rules, .claude settings and skills,

@@ -7,20 +7,23 @@ import {
   parseAdoptArgs,
   planAdopt,
 } from "./adopt.core"
-import { HARNESS_PACKAGE } from "./doctor.core"
+import { HARNESS_PACKAGE, isRecord } from "./doctor.core"
 
 const SPEC = "github:Pierre-Mike/factory#v9.9.9"
+const PR_TEMPLATE = "## What changed\n\n## Why\n"
 
 const bare: AdoptState = {
   pkgText: null,
   pkg: null,
   gitignore: null,
   hasCiWorkflow: false,
+  hasPrTemplate: false,
   hasFallowrc: false,
   hasGitDir: true,
   dirName: "legacy-repo",
   harnessSpec: SPEC,
   defaultBranch: "main",
+  prTemplate: PR_TEMPLATE,
 }
 
 const writesOf = (state: AdoptState) => {
@@ -145,11 +148,16 @@ describe("planAdopt skeleton files", () => {
     expect(writesOf({ ...bare, gitignore }).gitignore).toBeNull()
   })
 
-  it("stamps the one-job CI workflow on the repo's default branch", () => {
+  it("stamps the check, secret-scan and pr-body CI jobs on the repo's default branch", () => {
     const writes = writesOf({ ...bare, defaultBranch: "master" })
     expect(writes.ciWorkflow).toBe(liteCiWorkflow("master"))
     expect(writes.ciWorkflow).toContain("branches: [master]")
-    expect(writes.ciWorkflow).toContain("- run: bunx axioms check")
+    const workflow: unknown = Bun.YAML.parse(writes.ciWorkflow ?? "")
+    const jobs = isRecord(workflow) && isRecord(workflow.jobs) ? workflow.jobs : {}
+    expect(Object.keys(jobs)).toEqual(["check", "secret-scan", "pr-body"])
+    for (const gate of ["check", "secret-scan", "pr-body"]) {
+      expect(writes.ciWorkflow).toContain(`- run: bunx axioms ${gate}\n`)
+    }
     const unpinned = [...(writes.ciWorkflow ?? "").matchAll(/uses: (\S+)/g)].filter(
       ([, action]) => !/@[0-9a-f]{40}$/.test(action ?? ""),
     )
@@ -159,7 +167,17 @@ describe("planAdopt skeleton files", () => {
   it("leaves an existing CI workflow alone and says what doctor expects of it", () => {
     const writes = writesOf({ ...bare, hasCiWorkflow: true })
     expect(writes.ciWorkflow).toBeNull()
-    expect(writes.warnings.join("\n")).toContain("bunx axioms check")
+    const warned = writes.warnings.join("\n")
+    for (const gate of ["check", "secret-scan", "pr-body"]) {
+      expect(warned).toContain(`bunx axioms ${gate}`)
+    }
+  })
+
+  it("stamps the PR template the pr-body gate reads, unless the repo has its own", () => {
+    expect(writesOf(bare).prTemplate).toBe(PR_TEMPLATE)
+    const kept = writesOf({ ...bare, hasPrTemplate: true })
+    expect(kept.prTemplate).toBeNull()
+    expect(kept.warnings.join("\n")).toContain("left .github/PULL_REQUEST_TEMPLATE.md alone")
   })
 
   it("stamps .fallowrc.json only when the repo has none", () => {

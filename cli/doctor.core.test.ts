@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { liteCiWorkflow } from "./adopt.core"
 import { writeCanon } from "./canon.core"
 import {
   BIOME_FILE_INCLUDES,
@@ -353,24 +354,14 @@ describe("lite profile (axioms adopt)", () => {
     axioms: { profile: "lite" },
   }
 
-  /** An adopted repo: no template, no workspaces, no tsconfig, CI runs `check` only. */
+  /** An adopted repo: no template, no workspaces, no tsconfig, and the CI workflow adopt stamps. */
   const lite: DoctorInput = {
     ...healthy,
     pkg: litePkg,
     workspaceDirs: [],
     tsconfigReferences: [],
     tsconfigs: [{ path: TSCONFIG_BASE, config: null }],
-    ciWorkflow: {
-      jobs: {
-        check: {
-          steps: [
-            { uses: `actions/checkout@${SHA}` },
-            { run: "bun install --frozen-lockfile" },
-            { run: "bunx axioms check" },
-          ],
-        },
-      },
-    },
+    ciWorkflow: Bun.YAML.parse(liteCiWorkflow("main")),
     featureNames: [],
     smokeFiles: [],
     allowlistedTags: [],
@@ -397,7 +388,19 @@ describe("lite profile (axioms adopt)", () => {
     expect(rules({ ...lite, pkg: { ...litePkg, devDependencies: {} } })).toEqual(["package"])
     expect(rules({ ...lite, pkg: { ...litePkg, scripts: {} } })).toEqual(["package"])
     expect(rules({ ...lite, ciWorkflow: null })).toEqual(["ci"])
-    expect(rules({ ...lite, ciWorkflow: { jobs: {} } })).toEqual(["ci"])
+    expect(rules({ ...lite, ciWorkflow: { jobs: {} } })).toEqual(["ci", "ci", "ci"])
+  })
+
+  it("asks a lite repo for the secret-scan and pr-body CI gates, not only check", () => {
+    const checkOnly = {
+      jobs: {
+        check: { steps: [{ uses: `actions/checkout@${SHA}` }, { run: "bunx axioms check" }] },
+      },
+    }
+    expect(runDoctor({ ...lite, ciWorkflow: checkOnly }).map((f) => f.problem)).toEqual([
+      "ci.yml never runs `axioms secret-scan` as a step that must pass",
+      "ci.yml never runs `axioms pr-body` as a step that must pass",
+    ])
   })
 
   it("rejects a local harness path unless the selftest allows it", () => {
@@ -415,9 +418,10 @@ describe("lite profile (axioms adopt)", () => {
   })
 
   it("still rejects an unpinned action in a lite repo", () => {
-    const unpinned = {
-      jobs: { check: { steps: [{ uses: "actions/checkout@v6" }, { run: "bunx axioms check" }] } },
-    }
-    expect(rules({ ...lite, ciWorkflow: unpinned })).toEqual(["ci"])
+    const unpinned = liteCiWorkflow("main").replace(
+      /actions\/checkout@[0-9a-f]{40}/,
+      "actions/checkout@v6",
+    )
+    expect(rules({ ...lite, ciWorkflow: Bun.YAML.parse(unpinned) })).toEqual(["ci"])
   })
 })

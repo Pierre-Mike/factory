@@ -26,8 +26,12 @@ empty and review starts from the diff.
   event passes with a stated reason. The required headings come from the project's own
   `.github/PULL_REQUEST_TEMPLATE.md`; a missing template fails the gate.
 - Both ci.yml files run the gate as an unconditional `pr-body` job, `pr-body` is in `CI_GATES` in
-  `cli/doctor.core.ts` so a project cannot drop the job silently, and the canon rule in
-  `harness/canon.md` tells agents to build the body from the template and names the gate.
+  `cli/doctor.core.ts` for both the `app` and the `lite` profile so a project cannot drop the job
+  silently, and the canon rule in `harness/canon.md` tells agents to build the body from the
+  template and names the gate.
+- `axioms adopt` stamps the template's `.github/PULL_REQUEST_TEMPLATE.md` and the same `pr-body`
+  job into an existing repo, unless the repo already has a template, which the gate then
+  enforces as written.
 
 ## Alternatives considered
 
@@ -51,7 +55,8 @@ empty and review starts from the diff.
   price of staying visible to doctor and reproducible in the dry run.
 - `axioms sync` does not rewrite ci.yml or the PR template, so an existing project that bumps the
   harness sees doctor name the missing gate and copies the job and
-  `.github/PULL_REQUEST_TEMPLATE.md` from the factory template by hand.
+  `.github/PULL_REQUEST_TEMPLATE.md` from the factory template by hand. Only `axioms adopt`
+  writes them, once, into a repo it adopts.
 
 ## Verification
 

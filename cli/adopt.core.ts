@@ -3,8 +3,8 @@
  * lite harness (every gate that works without the app template) runs there. The shell
  * (commands/adopt.ts) reads the files, writes the plan and calls `axioms sync`, which owns every
  * synced copy (AGENTS.md canon, CLAUDE.md, notes rules, .claude settings and skills, biome.json,
- * lefthook.yml). Adopt writes only the skeleton sync does not: package.json, CI, .fallowrc.json
- * and .gitignore.
+ * lefthook.yml). Adopt writes only the skeleton sync does not: package.json, CI, the PR template,
+ * .fallowrc.json and .gitignore.
  */
 import { HARNESS_PACKAGE, isRecord } from "./doctor.core"
 
@@ -48,12 +48,15 @@ export interface AdoptState {
   readonly pkg: unknown
   readonly gitignore: string | null
   readonly hasCiWorkflow: boolean
+  readonly hasPrTemplate: boolean
   readonly hasFallowrc: boolean
   readonly hasGitDir: boolean
   readonly dirName: string
   readonly harnessSpec: string
   /** The branch the stamped CI workflow triggers on. */
   readonly defaultBranch: string
+  /** The app template's .github/PULL_REQUEST_TEMPLATE.md, which the pr-body gate checks against. */
+  readonly prTemplate: string
 }
 
 export interface AdoptWrites {
@@ -63,6 +66,8 @@ export interface AdoptWrites {
   readonly gitignore: string | null
   /** .github/workflows/ci.yml content, or `null` when the repo already has one. */
   readonly ciWorkflow: string | null
+  /** .github/PULL_REQUEST_TEMPLATE.md content, or `null` when the repo already has one. */
+  readonly prTemplate: string | null
   /** .fallowrc.json content, or `null` when the repo already has one. */
   readonly fallowrc: string | null
   readonly warnings: ReadonlyArray<string>
@@ -95,8 +100,9 @@ const gitignorePlan = (existing: string | null): string | null => {
 }
 
 /**
- * The one-job CI workflow for an adopted repo: install, then `axioms check`. The action SHAs are
- * the ones the app template pins (template/.github/workflows/ci.yml); keep them in step.
+ * The CI workflow for an adopted repo: the gates that are not app-shaped, each a job that installs
+ * and runs one command: `axioms check`, `axioms secret-scan` and `axioms pr-body`. The jobs and
+ * action SHAs match the app template's (template/.github/workflows/ci.yml); keep them in step.
  */
 export const liteCiWorkflow = (defaultBranch: string): string => `name: ci
 
@@ -125,6 +131,34 @@ jobs:
           bun-version: 1.3.6
       - run: bun install --frozen-lockfile
       - run: bunx axioms check
+
+  # gitleaks over the committed history: no secret reaches the remote, at a pinned version.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.6
+      - run: bun install --frozen-lockfile
+      - run: bunx axioms secret-scan
+
+  # The PR body is the author's contract: every section of .github/PULL_REQUEST_TEMPLATE.md,
+  # filled. The step is unconditional, and the command itself passes on runs that carry no pull
+  # request (a push, a dry-run replay), so the gate stays reproducible for \`axioms ci-dry-run\`.
+  pr-body:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.6
+      - run: bun install --frozen-lockfile
+      - run: bunx axioms pr-body
 `
 
 /** Entry points fallow can assume in a repo the factory did not generate; the owner refines them. */
@@ -203,7 +237,12 @@ export const planAdopt = (state: AdoptState): AdoptPlan => {
 
   if (state.hasCiWorkflow) {
     warnings.push(
-      "left .github/workflows/ci.yml alone; `axioms doctor` requires a must-pass `bunx axioms check` step in it",
+      "left .github/workflows/ci.yml alone; `axioms doctor` requires must-pass `bunx axioms check`, `bunx axioms secret-scan` and `bunx axioms pr-body` steps in it",
+    )
+  }
+  if (state.hasPrTemplate) {
+    warnings.push(
+      "left .github/PULL_REQUEST_TEMPLATE.md alone; `axioms pr-body` fails a PR whose body skips or empties one of its `##` sections",
     )
   }
   if (!state.hasFallowrc) {
@@ -218,6 +257,7 @@ export const planAdopt = (state: AdoptState): AdoptPlan => {
       pkg: `${JSON.stringify(next, null, 2)}\n`,
       gitignore: gitignorePlan(state.gitignore),
       ciWorkflow: state.hasCiWorkflow ? null : liteCiWorkflow(state.defaultBranch),
+      prTemplate: state.hasPrTemplate ? null : state.prTemplate,
       fallowrc: state.hasFallowrc ? null : LITE_FALLOWRC,
       warnings,
     },

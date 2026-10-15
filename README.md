@@ -38,7 +38,7 @@ from `brew install actionlint zizmor gitleaks`.
 | `template/` | The app: Hono + Effect on Cloudflare Workers, D1, Vite + React + TanStack served as assets. |
 | `tests/rules.test.ts` | Lints fixtures through the shared config and checks each rule fires where it should. |
 | `tests/selftest.ts` | `new`, `sync`, `check`, `slice`, `smoke`, the deploy dry run and the CI dry run on a throwaway project, plus a deliberately broken workflow the CI dry run must catch and a malformed Agent Note the notes gate must reject. |
-| `tests/selftest-adopt.ts` | `adopt` on a throwaway plain git repository: refusals, live hooks, sync stability, the lite `check` and the notes gate, with no wrangler anywhere. |
+| `tests/selftest-adopt.ts` | `adopt` on a throwaway plain git repository: refusals, live hooks, sync stability, the lite `check` and its evidence report, the PR body gate and the notes gate, with no wrangler anywhere. |
 
 ## How a project uses it
 
@@ -70,20 +70,22 @@ git add -A && git commit -m "chore: adopt the axioms harness"
 
 - Adopt stamps only the skeleton: the pinned `@pierre-mike/axioms` devDependency (same rules as
   `new`, including `--harness file:<path>` plus `AXIOMS_ALLOW_LOCAL_HARNESS=1` for testing), a
-  `check` script, `"axioms": { "profile": "lite" }`, a one-job CI workflow running
-  `bunx axioms check`, `.fallowrc.json`, and missing `.gitignore` entries. Every synced copy
-  (AGENTS.md canon, CLAUDE.md, the notes rules, `.claude/settings.json` and `.claude/skills/`,
-  biome.json, lefthook.yml) comes from `axioms sync`, which adopt runs.
+  `check` script, `"axioms": { "profile": "lite" }`, a CI workflow with the `check`,
+  `secret-scan` and `pr-body` jobs, the template's `.github/PULL_REQUEST_TEMPLATE.md`,
+  `.fallowrc.json`, and missing `.gitignore` entries. Every synced copy (AGENTS.md canon,
+  CLAUDE.md, the notes rules, `.claude/settings.json` and `.claude/skills/`, biome.json,
+  lefthook.yml) comes from `axioms sync`, which adopt runs.
 - The `lite` profile changes `axioms doctor`: it checks the gates adopt installs (Biome, hooks,
-  agent docs, notes rules, the Claude Code settings and skills, the pinned package, a must-pass
-  `check` step in CI) and skips the app-shaped ones (smoke, deploy, the tsconfig chain, workspace
-  references, the Effect major).
+  agent docs, notes rules, the Claude Code settings and skills, the pinned package, must-pass
+  `check`, `secret-scan` and `pr-body` steps in CI) and skips the app-shaped ones (smoke, deploy,
+  the tsconfig chain, workspace references, the Effect major).
 - `axioms check` skips typecheck when the repo has no root `tsconfig.json` and the test run when
   there are no test files, each with a message; adopt never writes a tsconfig. A skipped gate
   passes, and `check --json` reports it with `"skipped"` and the reason. Every other gate runs as
   in a generated project, so expect findings in code the gates now cover.
 - Adopting twice refuses and points to `bunx axioms sync`; outside a git repository it refuses.
-  An existing ci.yml and `.fallowrc.json` are left alone.
+  An existing ci.yml, PR template and `.fallowrc.json` are left alone, with a warning that says
+  what the gates expect of them.
 
 ## Changing the factory
 

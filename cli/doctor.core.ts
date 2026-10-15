@@ -74,9 +74,9 @@ const field = (input: { readonly value: unknown; readonly key: string }): unknow
  * Which shape of project the harness is wired into. The app template records nothing and gets
  * every check. `axioms adopt` records `"axioms": { "profile": "lite" }` in package.json: the
  * doctor then checks the gates the lite harness installs (lint, hooks, agent docs, notes, the
- * Claude Code settings and skills, the pinned package, a must-pass `check` in CI) and skips the
- * app-shaped ones (smoke, deploy, the tsconfig chain, workspace references, Effect). Losing the
- * marker makes the doctor stricter, never quieter.
+ * Claude Code settings and skills, the pinned package, must-pass `check`, `secret-scan` and
+ * `pr-body` steps in CI) and skips the app-shaped ones (smoke, deploy, the tsconfig chain,
+ * workspace references, Effect). Losing the marker makes the doctor stricter, never quieter.
  */
 export type HarnessProfile = "app" | "lite"
 
@@ -360,10 +360,13 @@ const checkTsconfigs = (
     return findings
   })
 
-/** The gates CI must run as must-pass steps. A lite repo has no worker to smoke or deploy. */
+/**
+ * The gates CI must run as must-pass steps. A lite repo has no worker to smoke or deploy, but the
+ * secret scan and the PR body contract are not app-shaped: `axioms adopt` stamps both jobs.
+ */
 const CI_GATES: Record<HarnessProfile, ReadonlyArray<string>> = {
   app: ["check", "smoke", "deploy --dry-run", "lint-workflows", "secret-scan", "pr-body"],
-  lite: ["check"],
+  lite: ["check", "secret-scan", "pr-body"],
 }
 const PINNED_USES = /^([^\s@]+@[0-9a-f]{40}|\.\/.*)$/
 
@@ -387,7 +390,7 @@ const checkCi = (input: { readonly ci: unknown; readonly profile: HarnessProfile
         problem: `.github/workflows/ci.yml is ${ci === null ? "missing" : "not valid YAML"}`,
         remedy:
           input.profile === "lite"
-            ? "restore the workflow `axioms adopt` stamped: one job running `bunx axioms check`"
+            ? "restore the workflow `axioms adopt` stamped: the check, secret-scan and pr-body jobs"
             : "copy it from the factory template",
       },
     ]

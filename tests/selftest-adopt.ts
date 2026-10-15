@@ -2,8 +2,9 @@
 /**
  * End-to-end test of `axioms adopt`: build a plain git repository the factory never saw, adopt the
  * lite harness into it, and prove the lite gates run there — `check` with typecheck skipped (no
- * tsconfig.json), the notes gate, live git hooks — with no wrangler anywhere, so this scenario is
- * safe to run in parallel with the app selftest.
+ * tsconfig.json) and said so in its report, the PR body gate on the stamped template, the notes
+ * gate, live git hooks — with no wrangler anywhere, so this scenario is safe to run in parallel
+ * with the app selftest.
  */
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -139,6 +140,25 @@ if (
 }
 console.error(`✓ the check report records the skipped typecheck: ${typecheckSkip}`)
 
+// Adopt stamped the PR template the pr-body CI job enforces: a filled body passes, and the
+// template itself, submitted unedited, fails (its hint comments are not content).
+const bodyPath = join(workdir, "pr-body.md")
+await Bun.write(
+  bodyPath,
+  "## What changed\n\nAdopted the harness.\n\n## Why\n\nThe repo gets the gates.\n\n## Verification\n\n`bun run check` passed.\n\n## Owning Agent Note\n\nNone: no lasting decision yet.\n",
+)
+await step({
+  name: "pr-body accepts a body that fills the stamped PR template",
+  cmd: ["bun", cli, "pr-body", bodyPath],
+  cwd: repo,
+})
+await step({
+  name: "pr-body rejects the stamped PR template submitted unedited",
+  cmd: ["bun", cli, "pr-body", ".github/PULL_REQUEST_TEMPLATE.md"],
+  cwd: repo,
+  expectFailure: true,
+})
+
 // The notes gate works in the adopted repo: it rejects a proposal promoted by its status word
 // only, then accepts the rewritten note.
 const notePath = join(repo, ".agents", "notes", "implemented", "process", "2026-01-01-use-bun.md")
@@ -161,5 +181,5 @@ await step({ name: "notes accepts the rewritten note", cmd: ["bun", cli, "notes"
 
 rmSync(workdir, { recursive: true, force: true })
 console.error(
-  "\n✓ adopt selftest: adopt, refusals, live hooks, sync stability, the lite check and the notes gate all behaved",
+  "\n✓ adopt selftest: adopt, refusals, live hooks, sync stability, the lite check, the PR body gate and the notes gate all behaved",
 )

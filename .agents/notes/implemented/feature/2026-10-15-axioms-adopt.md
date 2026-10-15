@@ -21,20 +21,25 @@ installs the lite harness and nothing app-shaped.
 - The skeleton is: `package.json` with `@pierre-mike/axioms` pinned to the release tag of the
   running version (the same rules as `new`, including the `--harness file:<path>` plus
   `AXIOMS_ALLOW_LOCAL_HARNESS=1` escape hatch the selftests use), a forced `check` script, `lint`
-  and `prepare` scripts when absent, `"axioms": { "profile": "lite" }`, a one-job
-  `.github/workflows/ci.yml` running `bunx axioms check` on the repo's default branch with the
-  same pinned action SHAs as the template, a `.fallowrc.json` with guessed entry points, and the
-  missing `.gitignore` entries (`node_modules`, `dist`, `*.tsbuildinfo`, `.DS_Store`). An existing
-  ci.yml or .fallowrc.json is left alone, with a warning saying what doctor expects.
+  and `prepare` scripts when absent, `"axioms": { "profile": "lite" }`, a
+  `.github/workflows/ci.yml` on the repo's default branch with three jobs, `check`, `secret-scan`
+  and `pr-body` (the template's jobs and pinned action SHAs, minus the app-shaped ones), the app
+  template's `.github/PULL_REQUEST_TEMPLATE.md` that the `pr-body` gate checks bodies against, a
+  `.fallowrc.json` with guessed entry points, and the missing `.gitignore` entries
+  (`node_modules`, `dist`, `*.tsbuildinfo`, `.DS_Store`). An existing ci.yml, PR template or
+  .fallowrc.json is left alone, with a warning saying what the gates expect of it.
 - The decisions are pure in `cli/adopt.core.ts` (`parseAdoptArgs`, `planAdopt`) with a co-located
   test; `cli/commands/adopt.ts` reads the files, writes the plan and runs the processes.
 - `harnessProfile` in `cli/doctor.core.ts` reads the recorded profile; absent means `app`, so
   template projects are untouched and losing the marker makes the doctor stricter, never quieter.
   In the `lite` profile the doctor keeps the checks for the gates adopt installs — Biome, hooks,
   agent docs, notes rules, the `.claude/` settings and skills copies sync writes, the pinned
-  package (`check` script only, no `smoke`), a must-pass `bunx axioms check` CI step and pinned
-  action SHAs — and skips the app-shaped ones: workspace references, the tsconfig chain, smoke
-  coverage, the error-tag allowlist and the Effect major.
+  package (`check` script only, no `smoke`), must-pass `bunx axioms check`, `bunx axioms
+  secret-scan` and `bunx axioms pr-body` CI steps, and pinned action SHAs — and skips the
+  app-shaped ones: workspace references, the tsconfig chain, smoke coverage, the error-tag
+  allowlist and the Effect major. The secret scan and the PR body contract guard every repo that
+  commits and opens pull requests, not only a Workers app, so the lite profile does not exempt
+  them; the pre-commit secret scan reaches lite repos anyway, through the shared lefthook.yml.
 - In a repo with no `biome.json` or tsconfig, adopt installs nothing extra: sync writes
   `biome.json` as it does everywhere, and adopt never writes a tsconfig. `axioms check` skips the
   typecheck gate when the root has no `tsconfig.json` and the `bun test` gate when no test file
@@ -70,11 +75,27 @@ beyond the pinning rule, which adopt reuses from `new.core`.
 loses comments and formatting; the lite workflow is a constant in `adopt.core.ts` instead, with
 the action SHAs kept in step with `template/.github/workflows/ci.yml` by hand.
 
+**Exempt lite repos from the `secret-scan` and `pr-body` CI gates.** Keeping the lite workflow at
+one `check` job, with doctor silent about the other two, is the smaller change. But the profile
+exists to shed app-shaped checks, and neither gate is app-shaped. The exemption would also let a
+hand-written lite key drop the secret scan from any project's CI, and leave the canon that sync
+copies into every AGENTS.md promising a PR body gate the repo never runs. The cost of including
+them is two stamped jobs and one stamped Markdown file.
+
 ## Consequences
 
-- An adopted repo gets lint, hooks, agent docs, Agent Notes, the shared Claude Code settings and
-  skills, doctor, dead-code and duplication gates, and CI, with no wrangler anywhere. It gives up nothing it had: existing scripts other
-  than `check` are kept, and a `prepare` script that lacks `axioms hooks` only earns a warning.
+- An adopted repo gets lint, hooks (the pre-commit secret scan included), agent docs, Agent
+  Notes, the shared Claude Code settings and skills, doctor, dead-code and duplication gates, and
+  CI with the history secret scan and the PR body contract, with no wrangler anywhere. It gives
+  up nothing it had: existing scripts other than `check` are kept, and a `prepare` script that
+  lacks `axioms hooks` only earns a warning.
+- Every pull request in an adopted repo must fill the stamped PR template's four sections, or the
+  `pr-body` job fails. A repo that keeps its own template gets its own `##` sections enforced
+  instead; one whose existing ci.yml lacks the `secret-scan` or `pr-body` step fails doctor until
+  it adds them, as it does for a missing `check` step.
+- The `secret-scan` job scans what the runner checks out, so pre-adoption history now meets
+  gitleaks too: a secret committed before the adoption turns the first CI run red. That is the
+  point, and the remedy is rotation, not removing the job.
 - The gates run through bun (`bunx axioms …`), whatever package manager the repo used before, and
   `bun install` adds a `bun.lock` the stamped CI consumes with `--frozen-lockfile`.
 - Existing code now faces the harness rules, so the first `bun run check` may be red; that is the
@@ -91,12 +112,16 @@ the action SHAs kept in step with `template/.github/workflows/ci.yml` by hand.
 ## Verification
 
 - `bun run verify`: lint, typecheck, the `adopt.core.test.ts` cases (argument parsing, refusals,
-  package.json planning, skeleton files) and the `lite profile` cases in `doctor.core.test.ts`,
-  then the notes gate.
+  package.json planning, skeleton files: the three CI jobs, the PR template and the warnings for
+  files left alone) and the `lite profile` cases in `doctor.core.test.ts`, whose healthy adopted
+  repo carries the workflow `liteCiWorkflow` stamps, so the stamped CI and the lite doctor cannot
+  drift apart; then the notes gate.
 - `bun run selftest:adopt` (also a factory CI job): on a throwaway plain git repository with
   TypeScript files, no package.json and no tsconfig, adopt refuses outside a git repo, adopts,
   refuses a second run pointing to sync, the installed commit-msg hook rejects a free-form
-  message, `axioms sync` right after adopt changes nothing, `axioms check --report` passes with
-  "typecheck skipped: no tsconfig.json" and the lite doctor while its report lists typecheck as
-  skipped with that reason and the test gate as run, and the notes gate rejects a
-  status-word-only promotion then accepts the rewritten note.
+  message, the pre-commit secret scan passes the adoption commit, `axioms sync` right after adopt
+  changes nothing, `axioms check --report` passes with "typecheck skipped: no tsconfig.json" and
+  the lite doctor while its report lists typecheck as skipped with that reason and the test gate
+  as run, `axioms pr-body` accepts a body that fills the stamped template and rejects the
+  template submitted unedited, and the notes gate rejects a status-word-only promotion then
+  accepts the rewritten note.
