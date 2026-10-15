@@ -11,12 +11,14 @@ import { doctor } from "./commands/doctor"
 import { ciDryRun } from "./commands/dryrun"
 import { newProject } from "./commands/new"
 import { notes } from "./commands/notes"
+import { rules } from "./commands/rules"
 import { slice } from "./commands/slice"
 import { smoke } from "./commands/smoke"
 import { sync } from "./commands/sync"
 import { lintWorkflows } from "./commands/workflows"
 import { commitSubjectProblem } from "./commit-msg.core"
 import { parseDeployArgs } from "./deploy.core"
+import { parseRulesArgs } from "./rules.core"
 import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
 
 const HELP = `axioms ${harnessVersion()}
@@ -32,6 +34,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
   axioms doctor                         check that every harness gate is wired
+  axioms rules [--apply]                branch protection from harness/github.rules.json (--apply writes it via gh)
   axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, biome.json, lefthook.yml
   axioms hooks                          install the git hooks (runs on bun install)
   axioms commit-msg <file>              conventional-commit check (git hook)
@@ -76,6 +79,12 @@ switch (command) {
   case "doctor":
     exit(await doctor(root))
     break
+  case "rules": {
+    const parsed = parseRulesArgs(args)
+    if (!parsed.ok) fail(parsed.error)
+    else exit(rules({ root, apply: parsed.apply }))
+    break
+  }
   case "sync":
     await sync(root)
     break

@@ -11,7 +11,9 @@ import {
   TSCONFIG_BASE,
 } from "../doctor.core"
 import { NOTES_DIR } from "../notes.core"
+import { checkGithubRules, githubNotice } from "../rules.core"
 import { HARNESS_DIR, harnessVersion, readJson, readText } from "../shell"
+import { readGithubInput } from "./github"
 
 const listDir = (path: string): string[] => (existsSync(path) ? readdirSync(path) : [])
 
@@ -147,5 +149,9 @@ export const report = (findings: ReadonlyArray<Finding>): boolean => {
   return false
 }
 
-export const doctor = async (root: string): Promise<boolean> =>
-  report(runDoctor(await readDoctorInput(root)))
+export const doctor = async (root: string): Promise<boolean> => {
+  const github = readGithubInput(root)
+  const notice = githubNotice(github.state)
+  if (notice !== undefined) console.error(notice)
+  return report([...runDoctor(await readDoctorInput(root)), ...checkGithubRules(github)])
+}
