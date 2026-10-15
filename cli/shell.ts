@@ -41,23 +41,61 @@ export const fail = (message: string): never => {
   process.exit(1)
 }
 
+/** Receives everything a gate writes, so `check --json` can report per-gate evidence. */
+export type Sink = (text: string) => void
+
 export interface RunOptions {
   readonly cmd: ReadonlyArray<string>
   readonly cwd: string
   readonly env?: Record<string, string>
   /** false: the command sees `env` only, not this process's environment. Defaults to true. */
   readonly inheritEnv?: boolean
+  /**
+   * When set, the child's stdout and stderr are piped into the sink and teed to this process's
+   * stderr, keeping stdout free for a machine-readable report. Default: inherited stdio.
+   */
+  readonly sink?: Sink
 }
 
-/** Run a command with inherited stdio and return its exit code. */
+/** Forward a child's stream to this process's stderr and to the sink. */
+export const teeStream = async (input: {
+  readonly stream: ReadableStream<Uint8Array>
+  readonly sink: Sink
+}): Promise<void> => {
+  const decoder = new TextDecoder()
+  const forward = (text: string) => {
+    if (text === "") return
+    process.stderr.write(text)
+    input.sink(text)
+  }
+  for await (const chunk of input.stream) forward(decoder.decode(chunk, { stream: true }))
+  forward(decoder.decode())
+}
+
+/** Run a command and return its exit code; see `RunOptions.sink` for where its output goes. */
 export const run = async (opts: RunOptions): Promise<number> => {
+  const env = opts.inheritEnv === false ? { ...opts.env } : { ...process.env, ...opts.env }
+  if (opts.sink === undefined) {
+    const proc = Bun.spawn([...opts.cmd], {
+      cwd: opts.cwd,
+      env,
+      stdout: "inherit",
+      stderr: "inherit",
+      stdin: "inherit",
+    })
+    return await proc.exited
+  }
   const proc = Bun.spawn([...opts.cmd], {
     cwd: opts.cwd,
-    env: opts.inheritEnv === false ? { ...opts.env } : { ...process.env, ...opts.env },
-    stdout: "inherit",
-    stderr: "inherit",
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
     stdin: "inherit",
   })
+  await Promise.all([
+    teeStream({ stream: proc.stdout, sink: opts.sink }),
+    teeStream({ stream: proc.stderr, sink: opts.sink }),
+  ])
   return await proc.exited
 }
 
@@ -66,7 +104,8 @@ export const runTool = (input: {
   readonly tool: Tool
   readonly args: ReadonlyArray<string>
   readonly cwd: string
-}) => run({ cmd: ["bun", toolPath(input.tool), ...input.args], cwd: input.cwd })
+  readonly sink?: Sink
+}) => run({ cmd: ["bun", toolPath(input.tool), ...input.args], cwd: input.cwd, sink: input.sink })
 
 export const readText = (path: string): string | null =>
   existsSync(path) ? readFileSync(path, "utf8") : null

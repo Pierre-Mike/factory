@@ -9,6 +9,7 @@ import { deploy } from "./commands/deploy"
 import { dev } from "./commands/dev"
 import { doctor } from "./commands/doctor"
 import { ciDryRun } from "./commands/dryrun"
+import type { GateRun } from "./commands/gates"
 import { newProject } from "./commands/new"
 import { notes } from "./commands/notes"
 import { slice } from "./commands/slice"
@@ -17,6 +18,7 @@ import { sync } from "./commands/sync"
 import { lintWorkflows } from "./commands/workflows"
 import { commitSubjectProblem } from "./commit-msg.core"
 import { parseDeployArgs } from "./deploy.core"
+import { buildReport, parseReportArgs, renderReport } from "./report.core"
 import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
 
 const HELP = `axioms ${harnessVersion()}
@@ -25,9 +27,12 @@ const HELP = `axioms ${harnessVersion()}
                                         create a project from the template (pins the release tag)
   axioms slice <feature> [--door]       add a feature slice
   axioms dev                            wrangler dev (:8787) + vite (:5173)
-  axioms check                          lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, dupes
+  axioms check [--json] [--report <path>]
+                                        lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, dupes
   axioms notes [--seal]                 check .agents/notes; --seal freezes newly archived notes
-  axioms smoke                          run smoke/ against a local wrangler dev
+  axioms smoke [--json] [--report <path>]
+                                        run smoke/ against a local wrangler dev
+                                        (--json: one JSON evidence document on stdout; --report: the same to a file)
   axioms deploy [--dry-run]             bundle + migrate locally; without --dry-run, deploy for real
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
@@ -42,6 +47,24 @@ const root = projectRoot(process.cwd())
 
 const exit = (ok: boolean) => process.exit(ok ? 0 : 1)
 
+/** check and smoke: run the gates, honor `--json` / `--report <path>`, exit with the verdict. */
+const gatedReport = async (input: {
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+  readonly gather: (collect: boolean) => Promise<GateRun>
+}): Promise<void> => {
+  const parsed = parseReportArgs(input.args)
+  if (!parsed.ok) return fail(parsed.error)
+  const collect = parsed.json || parsed.report !== undefined
+  const result = await input.gather(collect)
+  if (collect) {
+    const text = renderReport(buildReport({ command: input.command, gates: result.gates }))
+    if (parsed.report !== undefined) await Bun.write(parsed.report, text)
+    if (parsed.json) await Bun.write(Bun.stdout, text)
+  }
+  exit(result.ok)
+}
+
 switch (command) {
   case "new":
     await newProject(args)
@@ -50,13 +73,13 @@ switch (command) {
     await slice({ root, args })
     break
   case "check":
-    exit(await check(root))
+    await gatedReport({ command: "check", args, gather: (collect) => check({ root, collect }) })
     break
   case "dev":
     exit(await dev(root))
     break
   case "smoke":
-    exit(await smoke(root))
+    await gatedReport({ command: "smoke", args, gather: (collect) => smoke({ root, collect }) })
     break
   case "deploy": {
     const parsed = parseDeployArgs(args)
