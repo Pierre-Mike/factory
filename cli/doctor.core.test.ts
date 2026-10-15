@@ -27,6 +27,7 @@ const HEALTHY_JOBS = {
       { run: "bunx axioms smoke" },
       { run: "bunx axioms deploy --dry-run" },
       { run: "bunx axioms lint-workflows" },
+      { run: "bunx axioms secret-scan" },
     ],
   },
 }
@@ -236,7 +237,7 @@ describe("runDoctor", () => {
           ...healthy,
           ciWorkflow: { jobs: { a: { steps: [{ run: "bunx axioms check" }] } } },
         }),
-      ).toEqual(["ci", "ci", "ci"])
+      ).toEqual(["ci", "ci", "ci", "ci"])
     })
 
     it("accepts the gate inside a multi-line run, with or without bunx", () => {
