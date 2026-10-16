@@ -20,7 +20,6 @@ const HEALTHY_JOBS = {
   check: {
     steps: [
       { uses: `actions/checkout@${SHA}` },
-      { id: "harness-access", run: "git config --global url.x.insteadOf y" },
       { run: "bun install --frozen-lockfile" },
       { run: "bunx axioms check" },
     ],
@@ -50,9 +49,7 @@ const healthy: DoctorInput = {
     { path: "README.md", harness: "# Harness skills\n", project: "# Harness skills\n" },
   ],
   pkg: {
-    devDependencies: {
-      [HARNESS_PACKAGE]: "git+ssh://git@github.com/Pierre-Mike/factory.git#v0.3.0",
-    },
+    devDependencies: { [HARNESS_PACKAGE]: "github:Pierre-Mike/factory#v0.3.0" },
     scripts: { check: "axioms check", smoke: "axioms smoke" },
   },
   workspaceDirs: ["apps/server", "shared"],
@@ -173,27 +170,20 @@ describe("runDoctor", () => {
     const missing = runDoctor({ ...healthy, pkg: { scripts: healthy.pkg } }).find(
       (f) => f.rule === "package",
     )
-    expect(missing?.remedy).toBe(
-      `bun add -d ${HARNESS_PACKAGE}@git+ssh://git@github.com/Pierre-Mike/factory.git#v0.7.0`,
-    )
+    expect(missing?.remedy).toBe(`bun add -d ${HARNESS_PACKAGE}@github:Pierre-Mike/factory#v0.7.0`)
   })
 
-  it("flags a harness spec bun would fetch anonymously from the private repo", () => {
-    for (const spec of [
-      "github:Pierre-Mike/factory#v0.8.1",
-      "git+https://github.com/Pierre-Mike/factory.git#v0.8.1",
-      "https://github.com/Pierre-Mike/factory#v0.8.1",
-    ]) {
-      expect(
-        rules({
-          ...healthy,
-          pkg: {
-            devDependencies: { [HARNESS_PACKAGE]: spec },
-            scripts: { check: "axioms check", smoke: "axioms smoke" },
-          },
-        }),
-      ).toEqual(["package"])
+  it("flags the git+ssh spec from the private-repo releases, which needs an SSH key or a token", () => {
+    const sshPinned = {
+      devDependencies: {
+        [HARNESS_PACKAGE]: "git+ssh://git@github.com/Pierre-Mike/factory.git#v0.11.0",
+      },
+      scripts: { check: "axioms check", smoke: "axioms smoke" },
     }
+    const finding = runDoctor({ ...healthy, pkg: sshPinned }).find((f) => f.rule === "package")
+    expect(finding?.remedy).toBe(
+      `the harness is public: bun add -d ${HARNESS_PACKAGE}@github:Pierre-Mike/factory#v0.7.0`,
+    )
   })
 
   it("flags a harness pinned to a local path, unless the self-test allows it", () => {
@@ -291,9 +281,7 @@ describe("runDoctor", () => {
     })
 
     it("accepts the gate inside a multi-line run, with or without bunx", () => {
-      expect(
-        withSteps([{ id: "harness-access", run: "true" }, { run: "bun install\naxioms check\n" }]),
-      ).toEqual([])
+      expect(withSteps([{ run: "bun install\naxioms check\n" }])).toEqual([])
     })
 
     it("does not count a gate mentioned in a comment, an echo or a name", () => {
@@ -318,19 +306,18 @@ describe("runDoctor", () => {
       ).toEqual(["ci"])
     })
 
-    it("flags a job that installs before, or without, the harness-access step", () => {
-      expect(withSteps([{ run: "bun install" }, { run: "bunx axioms check" }])).toEqual(["ci"])
+    it("flags a harness-access step left over from the private-repo releases", () => {
       expect(
         withSteps([
+          { id: "harness-access", run: "git config --global url.x.insteadOf y" },
           { run: "bun install --frozen-lockfile" },
-          { id: "harness-access", run: "true" },
           { run: "bunx axioms check" },
         ]),
       ).toEqual(["ci"])
     })
 
-    it("does not ask for harness-access in a job that never installs", () => {
-      expect(withSteps([{ run: "bunx axioms check" }])).toEqual([])
+    it("needs no access step before bun install, since the harness is public", () => {
+      expect(withSteps([{ run: "bun install" }, { run: "bunx axioms check" }])).toEqual([])
     })
 
     it("flags actions not pinned to a commit SHA, in steps and reusable workflows", () => {
@@ -389,9 +376,7 @@ describe("parseAllowlistedTags", () => {
 
 describe("lite profile (axioms adopt)", () => {
   const litePkg = {
-    devDependencies: {
-      [HARNESS_PACKAGE]: "git+ssh://git@github.com/Pierre-Mike/factory.git#v0.8.1",
-    },
+    devDependencies: { [HARNESS_PACKAGE]: "github:Pierre-Mike/factory#v0.8.1" },
     scripts: { check: "axioms check" },
     axioms: { profile: "lite" },
   }

@@ -1,6 +1,7 @@
 # Agent Note: The harness repo is private
 
 Status: implemented
+Archived: 2026-10-16
 
 ## Problem
 

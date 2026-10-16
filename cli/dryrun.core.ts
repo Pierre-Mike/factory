@@ -4,7 +4,7 @@
  * the clean clone already stands in for are skipped with a reason, and anything else makes the
  * plan unsimulatable. An unsimulatable step fails the dry run: a gate that cannot run must not pass.
  */
-import { HARNESS_ACCESS_ID, isRecord } from "./doctor.core"
+import { isRecord } from "./doctor.core"
 
 /** Files whose change can break CI or a deploy without breaking `axioms check` locally. */
 const CI_CD_FILES = [
@@ -111,11 +111,6 @@ const planStep = (input: {
   const where = `${input.job} › ${name}`
   if (step.if !== undefined)
     return { unsupported: `${where}: conditional steps (if:) are not simulated` }
-  // Replaying it would rewrite the developer's global git config with an empty token.
-  if (step.id === HARNESS_ACCESS_ID)
-    return {
-      step: { kind: "provided", name, reason: "local git already reaches the private harness" },
-    }
   if (uses !== undefined) {
     const provided = PROVIDED.find(([pattern]) => pattern.test(uses))
     if (provided === undefined)

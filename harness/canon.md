@@ -88,12 +88,10 @@ shared/                        # effect Schema contracts used by server and web
   error lines, or the reason a gate skipped itself; plus the overall verdict and counts) and still
   exit non-zero on failure; `--report <path>` writes the same document to a file. A program or
   agent reads that report instead of scraping logs or trusting a worker's account of its own run.
-- The harness is pinned to a released tag
-  (`git+ssh://git@github.com/Pierre-Mike/factory.git#vX.Y.Z`), never a local path, because a CI
-  runner cannot install a path that only exists on one machine. The factory repo is private, and
-  bun fetches `github:` specs without credentials, so `axioms doctor` rejects them. Every CI job
-  that runs `bun install` needs the `id: harness-access` step before it (doctor checks), and the
-  repo needs the `HARNESS_TOKEN` secret.
+- The harness is pinned to a released tag (`github:Pierre-Mike/factory#vX.Y.Z`), never a local
+  path, because a CI runner cannot install a path that only exists on one machine. `axioms doctor`
+  also rejects the `git+ssh` spec and the `harness-access` CI step from the private-repo releases,
+  since both need credentials the public repo no longer asks for.
 - `axioms doctor` fails when a part of this harness is missing or unwired, when `biome.json` adds
   rules, extends anything besides the harness or narrows `files.includes`, when a nested Biome
   config exists, when a CI gate is missing, skippable or allowed to fail, and when a tsconfig

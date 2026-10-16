@@ -77,28 +77,6 @@ describe("planWorkflow", () => {
     ])
   })
 
-  it("stands in for the harness-access step, env and all, instead of touching local git config", () => {
-    const plan = planWorkflow({
-      workflow: workflow([
-        {
-          id: "harness-access",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub Actions expression, not a JS template
-          env: { HARNESS_TOKEN: "${{ secrets.HARNESS_TOKEN }}" },
-          run: "git config --global url.x.insteadOf y",
-        },
-      ]),
-      localBun: "1",
-    })
-    expect(plan.unsupported).toEqual([])
-    expect(plan.jobs[0]?.steps).toEqual([
-      {
-        kind: "provided",
-        name: "git config --global url.x.insteadOf y",
-        reason: "local git already reaches the private harness",
-      },
-    ])
-  })
-
   it("warns when CI pins a different bun", () => {
     const plan = planWorkflow({
       workflow: workflow([{ uses: "oven-sh/setup-bun@x", with: { "bun-version": "1.3.6" } }]),

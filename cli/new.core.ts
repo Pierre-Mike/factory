@@ -42,10 +42,6 @@ export const parseNewArgs = (args: ReadonlyArray<string>): ParsedNewArgs => {
 
 /**
  * The GitHub tag a project pins by default: the version of the CLI that generated it. The factory
- * repo is private and bun sends no credentials for `github:` or `git+https://github.com` specs (it
- * fetches an API tarball anonymously), so the spec is `git+ssh`, which bun hands to `git`. Git then
- * authenticates: locally through an `insteadOf` rewrite to HTTPS and the gh credential helper, in
- * CI through the template's `harness-access` step.
+ * repo is public, so bun fetches the tag's tarball with no credentials, locally and in CI.
  */
-export const releaseSpec = (version: string): string =>
-  `git+ssh://git@github.com/Pierre-Mike/factory.git#v${version}`
+export const releaseSpec = (version: string): string => `github:Pierre-Mike/factory#v${version}`

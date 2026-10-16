@@ -1,9 +1,10 @@
 {
   "name": "@pierre-mike/axioms",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Harness, CLI and app template for agent-built TypeScript apps on Cloudflare Workers",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
+  "repository": "github:Pierre-Mike/factory",
   "private": true,
   "bin": {
     "axioms": "./cli/main.ts"

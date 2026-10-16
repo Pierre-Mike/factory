@@ -37,7 +37,7 @@ describe("parseNewArgs", () => {
 })
 
 describe("releaseSpec", () => {
-  it("pins the GitHub tag of the version through git, which can authenticate", () => {
-    expect(releaseSpec("0.5.1")).toBe("git+ssh://git@github.com/Pierre-Mike/factory.git#v0.5.1")
+  it("pins the GitHub tag of the version, which the public repo serves anonymously", () => {
+    expect(releaseSpec("0.5.1")).toBe("github:Pierre-Mike/factory#v0.5.1")
   })
 })
