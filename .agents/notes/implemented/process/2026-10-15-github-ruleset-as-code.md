@@ -16,13 +16,13 @@ Branch protection is a file the harness owns, and a missing rule is a failing do
 
 - `harness/github.rules.json` is a GitHub repository ruleset (the shape `POST
   /repos/{owner}/{repo}/rulesets` accepts, same as the UI's import/export) for the default branch:
-  pull requests with one approving review before merge, which also blocks direct pushes, the six
+  pull requests before merge with no required approval, which still blocks direct pushes, the six
   `template/.github/workflows/ci.yml` jobs (`check`, `smoke`, `deploy-dry-run`, `pr-body`,
   `workflow-lint`, `secret-scan`) as required status checks, linear history, no force pushes
   (`non_fast_forward`), no deletion, merge by squash or rebase only, no bypass actors. Repository
-  auto-merge on is part of the expected state, so a green, approved PR merges without a human
-  pressing the button; it is a repo setting, not a ruleset rule, so it lives in the check rather
-  than the file.
+  auto-merge on is part of the expected state, so `gh pr merge --auto` queues a PR to merge once
+  CI is green; it is a repo setting, not a ruleset rule, so it lives in the check rather than the
+  file.
 - `axioms rules --apply` converges a repo on the file through `gh api`: it matches live rulesets by
   name (`PUT` the existing id, else `POST`) so reruns update in place, then `PATCH`es
   `allow_auto_merge` on when it is off. Without `--apply` it prints the calls it would make.
@@ -48,14 +48,10 @@ Branch protection is a file the harness owns, and a missing rule is a failing do
   repos/{owner}/{repo}/branches/{default}` first, and the pure `branchLookupFailure` turns its
   HTTP 404 into the reason "main is not on <repo> yet: push it, then run `bunx axioms rules
   --apply`". `axioms new` prints that order: `gh repo create --push`, then `rules --apply`.
-- Agent PRs come from a bot account so the owner can approve them. GitHub never lets a PR's
-  author approve it, so with one required review and no bypass actors, a PR an agent opens under
-  the owner's own login can never merge. The pull-request skill runs `gh pr create` with
-  `GH_TOKEN="${AXIOMS_BOT_TOKEN:-$(gh auth token)}"`. `AXIOMS_BOT_TOKEN` is a classic token with
-  `public_repo` (or `repo`) scope for a second GitHub account, a machine user added to the project
-  as a collaborator with write access. A fine-grained token cannot be used here: it only reaches
-  repos its own account or organization owns. Without the variable the PR opens as the owner, and
-  the skill says that it cannot merge until someone else approves.
+- No approval is required because the factory's projects are solo. Agents open PRs under the
+  owner's login, and GitHub never counts a PR author's own approval, so one required review meant
+  no PR could merge without a second person. The owner reviews the PR and then merges it. The
+  pull-request skill tells the agent not to merge or turn on auto-merge unless the owner asks.
 
 ## Alternatives considered
 
@@ -82,16 +78,18 @@ drift until gh works; the notice names the blocker each run.
 **Terraform or a settings app (Probot) for repo config.** A second toolchain and credential to
 carry for one JSON document. `gh` is already how agents authenticate to GitHub here.
 
-**A per-project review count, or zero reviews, for solo repos.** Raised while building the first
-outside project, `small-tools`, whose owner could not merge anything. A project-side count is a
-setting an agent working in that project could lower, and the harness keeps every wall out of the
-project's reach. Zero reviews everywhere drops the one human check before `main`. A bot author
-keeps the rule and makes the owner's review possible.
+**One required review, with agents opening PRs as a bot account.** Shipped in v0.13.0: the
+pull-request skill opened PRs with a machine user's token (`AXIOMS_BOT_TOKEN`) so the owner could
+approve them. It is the only option where a tool, GitHub itself, guarantees a human approved
+before merge. The owner chose against it in v0.14.0: a second GitHub account, a classic token and
+a collaborator invite per project is too much setup for a solo developer.
 
-**A GitHub App as the bot.** It needs no second account, but its installation tokens last an hour
-and are minted from a private key with a signed JWT, which `gh` does not do. A machine user's
-token works with plain `gh`. An App can replace it later without changing the skill, since the
-skill only reads `AXIOMS_BOT_TOKEN`.
+**A per-project review count.** A project-side count is a setting an agent working in that
+project could lower, and the harness keeps every wall out of the project's reach. The count stays
+in the factory's file.
+
+**A bypass actor for the repository admin.** GitHub's ruleset bypass applies to every rule in the
+ruleset, so an admin, or an agent with the admin's login, could also merge past failing CI.
 
 ## Consequences
 
@@ -100,13 +98,11 @@ skill only reads `AXIOMS_BOT_TOKEN`.
 - The required status checks are coupled to the template's ci.yml job names. A test in
   `cli/rules.core.test.ts` parses both files and fails when they diverge, so renaming a CI job
   forces the ruleset file to follow.
-- One approving review means a solo maintainer cannot approve a PR they opened themselves; with no
-  bypass actors, the way through is a second identity, not a looser file. Loosening protection
-  stays a reviewed factory change, not a settings tweak. A solo owner sets up the bot once per
-  machine (`AXIOMS_BOT_TOKEN`) and adds the bot to each project as a collaborator. A PR the
-  owner opens by hand still needs another reviewer.
-- `tests/skills.test.ts` couples the skill to the ruleset: while the file requires a review, the
-  pull-request skill must run `gh pr create` with `AXIOMS_BOT_TOKEN`.
+- Nothing enforces a human review. Agents push and open PRs with the owner's login, so GitHub
+  cannot tell an agent's merge from the owner's. What still gates `main` is the PR and the six
+  green checks. The human review rests on the skill's instruction, which is advice, not a wall.
+- Doctor still accepts a live ruleset stricter than the file, so a project protected by v0.13.0
+  or earlier (one required review) passes until `rules --apply` lowers it to zero.
 - The first push of a project needs no `--no-verify`: `main` passes doctor as not verified, and
   the next push fails until `rules --apply` has run. Between the two pushes `main` is unprotected,
   which is the same window as the old "no remote yet" case.
@@ -138,6 +134,6 @@ skill only reads `AXIOMS_BOT_TOKEN`.
   rules. Doctor under v0.12.0 reported six github findings there; with this change it prints the
   one not-verified notice "main is not on Pierre-Mike/small-tools yet: push it, then run `bunx
   axioms rules --apply`" and no github finding.
-- `tests/skills.test.ts` fails with the pull-request skill as v0.12.0 shipped it and passes with
-  the `AXIOMS_BOT_TOKEN` line. The bot account itself is not tested: it needs a second GitHub
-  login, which only the owner can create.
+- `cli/rules.core.test.ts` "lets a solo owner merge" failed against the file with one required
+  review and passes with zero. The review comparison is pinned with a stricter file built in the
+  test, and a live ruleset that still requires one review passes against the shipped file.

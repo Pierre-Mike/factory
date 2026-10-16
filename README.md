@@ -111,14 +111,9 @@ gh repo create <owner>/my-app --source . --remote origin --push
 bunx axioms rules --apply   # the branch ruleset, and auto-merge on
 ```
 
-The ruleset requires one approving review, and GitHub never lets a PR's author approve it. So that
-you can approve what an agent opens, agents open PRs as a second GitHub account:
-
-1. Create a machine user (one free account per person is allowed) and add it to the project as a
-   collaborator with write access.
-2. Signed in as the machine user, create a classic token with `public_repo` scope (`repo` for a
-   private project). Fine-grained tokens can't reach repos another account owns.
-3. Export it as `AXIOMS_BOT_TOKEN` in your shell. The pull-request skill opens PRs with it.
+Every change reaches `main` through a PR that passes the six CI checks. No approval is required:
+agents open PRs under your login, and GitHub never counts a PR author's own approval. You review
+the PR, then merge it, or queue it with `gh pr merge --auto --squash` to merge once CI is green.
 
 Every project's CI runs `check`, `smoke`, `deploy-dry-run`, `workflow-lint` (actionlint + zizmor),
 `secret-scan` (gitleaks, also on every commit via the pre-commit hook) and `pr-body` (the PR body

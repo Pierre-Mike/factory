@@ -98,15 +98,13 @@ shared/                        # effect Schema contracts used by server and web
   stops extending the harness or sets a strict check (`strict`, `noUncheckedIndexedAccess` and
   the rest) to `false`. Fix the type error instead.
 - Branch protection is a file the harness owns: `harness/github.rules.json` requires a pull
-  request with one approving review before merge (so no direct pushes), the ci.yml jobs as
+  request before merge (so no direct pushes) but no approval, the ci.yml jobs as
   required status checks, linear history, and blocks force pushes and deletion of the default
   branch; repository auto-merge stays on. `bunx axioms rules --apply` writes it to GitHub through
   `gh api`, and `axioms doctor` fails while the live rules or the auto-merge setting drift from
   the file. When doctor cannot read the rules (no GitHub remote yet, a default branch not pushed
   yet, gh missing or not authenticated, or a private repo on a plan without rulesets), it reports
-  what it could not verify and why instead of failing. GitHub never lets a PR's author approve it,
-  so the pull-request skill opens PRs as a bot account through `AXIOMS_BOT_TOKEN`
-  (`tests/skills.test.ts` in the factory checks that).
+  what it could not verify and why instead of failing.
 - `.claude/settings.json` and `.claude/skills/` are copies owned by the harness: the shared
   permission allowlist (the project's own gate commands, nothing broader) and the shared agent
   skills. `bunx axioms sync` installs them and `axioms doctor` fails when a copy is missing or

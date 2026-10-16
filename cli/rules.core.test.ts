@@ -69,10 +69,24 @@ describe("checkGithubRules", () => {
   })
 
   it("flags a review requirement below the file's, and accepts a stricter one", () => {
-    expect(
-      problems(live({ rules: withPullRequest({ required_approving_review_count: 0 }) })),
-    ).toEqual(["pull requests merge with 0 approving reviews, but the harness requires 1"])
-    expect(check(live({ rules: withPullRequest({ required_approving_review_count: 2 }) }))).toEqual(
+    // The shipped file asks for none, so this pins the comparison with a file that asks for one.
+    const strict = {
+      ...(expected as Record<string, unknown>),
+      rules: withPullRequest({ required_approving_review_count: 1 }),
+    }
+    const reviews = (count: number) =>
+      checkGithubRules({
+        expected: strict,
+        state: live({ rules: withPullRequest({ required_approving_review_count: count }) }),
+      }).map((finding) => finding.problem)
+    expect(reviews(0)).toEqual([
+      "pull requests merge with 0 approving reviews, but the harness requires 1",
+    ])
+    expect(reviews(2)).toEqual([])
+  })
+
+  it("accepts a repo that still requires a review from an older harness", () => {
+    expect(check(live({ rules: withPullRequest({ required_approving_review_count: 1 }) }))).toEqual(
       [],
     )
   })
@@ -206,5 +220,11 @@ describe("the shipped ruleset", () => {
     ]) {
       expect(types).toContain(type)
     }
+  })
+
+  it("lets a solo owner merge: a PR is required, an approval is not", () => {
+    // GitHub never counts the author's own approval, and agents open PRs under the owner's login.
+    const pullRequest = fileRules.find((rule) => rule.type === "pull_request")
+    expect(pullRequest?.parameters?.required_approving_review_count).toBe(0)
   })
 })
