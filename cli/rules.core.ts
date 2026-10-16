@@ -131,6 +131,25 @@ export const githubNotice = (state: GithubState): string | undefined =>
     ? `– [github] branch protection not verified: ${state.reason}`
     : undefined
 
+/**
+ * GET repos/{owner}/{repo}/branches/{default} decides whether there is a branch to judge. A new
+ * repo names `main` as its default before anything is pushed, and its branch rules read as `[]`,
+ * so without this a project could never make the first push its pre-push hook demands.
+ */
+export const branchLookupFailure = (input: {
+  readonly repo: string
+  readonly branch: string
+  readonly lookup: { readonly ok: boolean; readonly reason: string }
+}): GithubState | undefined => {
+  if (input.lookup.ok) return undefined
+  return input.lookup.reason.includes("HTTP 404")
+    ? {
+        kind: "unavailable",
+        reason: `${input.branch} is not on ${input.repo} yet: push it, then run \`bunx axioms rules --apply\``,
+      }
+    : { kind: "unavailable", reason: input.lookup.reason }
+}
+
 export interface ApplyCall {
   readonly method: "POST" | "PUT"
   readonly path: string

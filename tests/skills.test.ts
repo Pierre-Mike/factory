@@ -114,6 +114,20 @@ describe("harness/skills", () => {
   }
 })
 
+describe("pull-request skill and the branch ruleset", () => {
+  it("opens the PR as the bot while the ruleset needs a review the author cannot give", () => {
+    const ruleset = JSON.parse(read(join(PKG_ROOT, "harness/github.rules.json"))) as {
+      rules: Array<{ type: string; parameters?: { required_approving_review_count?: number } }>
+    }
+    const reviews =
+      ruleset.rules.find((rule) => rule.type === "pull_request")?.parameters
+        ?.required_approving_review_count ?? 0
+    expect(reviews).toBeGreaterThan(0)
+    const skill = read(join(SKILLS_DIR, "pull-request", "SKILL.md"))
+    expect(skill).toMatch(/GH_TOKEN="\$\{AXIOMS_BOT_TOKEN:-[^}]*\}" \\\n\s*gh pr create /)
+  })
+})
+
 describe("pull-request example body", () => {
   const body = read(join(SKILLS_DIR, "pull-request", "example-body.md"))
 

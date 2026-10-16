@@ -42,6 +42,20 @@ Branch protection is a file the harness owns, and a missing rule is a failing do
   API, which it does with HTTP 403 on private repos under the Free plan. A repo whose rules gh can
   read and that is missing one fails: an unprotected branch returns `200 []`, which yields one
   finding per expected rule.
+- A default branch that is not on GitHub yet is also "not verified". A new repo names `main` as
+  its default before anything is pushed, and its branch rules read as `200 []`, so the pre-push
+  hook failed the very push that would create `main`. The shell now asks `GET
+  repos/{owner}/{repo}/branches/{default}` first, and the pure `branchLookupFailure` turns its
+  HTTP 404 into the reason "main is not on <repo> yet: push it, then run `bunx axioms rules
+  --apply`". `axioms new` prints that order: `gh repo create --push`, then `rules --apply`.
+- Agent PRs come from a bot account so the owner can approve them. GitHub never lets a PR's
+  author approve it, so with one required review and no bypass actors, a PR an agent opens under
+  the owner's own login can never merge. The pull-request skill runs `gh pr create` with
+  `GH_TOKEN="${AXIOMS_BOT_TOKEN:-$(gh auth token)}"`. `AXIOMS_BOT_TOKEN` is a classic token with
+  `public_repo` (or `repo`) scope for a second GitHub account, a machine user added to the project
+  as a collaborator with write access. A fine-grained token cannot be used here: it only reaches
+  repos its own account or organization owns. Without the variable the PR opens as the owner, and
+  the skill says that it cannot merge until someone else approves.
 
 ## Alternatives considered
 
@@ -68,16 +82,34 @@ drift until gh works; the notice names the blocker each run.
 **Terraform or a settings app (Probot) for repo config.** A second toolchain and credential to
 carry for one JSON document. `gh` is already how agents authenticate to GitHub here.
 
+**A per-project review count, or zero reviews, for solo repos.** Raised while building the first
+outside project, `small-tools`, whose owner could not merge anything. A project-side count is a
+setting an agent working in that project could lower, and the harness keeps every wall out of the
+project's reach. Zero reviews everywhere drops the one human check before `main`. A bot author
+keeps the rule and makes the owner's review possible.
+
+**A GitHub App as the bot.** It needs no second account, but its installation tokens last an hour
+and are minted from a private key with a signed JWT, which `gh` does not do. A machine user's
+token works with plain `gh`. An App can replace it later without changing the skill, since the
+skill only reads `AXIOMS_BOT_TOKEN`.
+
 ## Consequences
 
-- `axioms doctor` (and so `axioms check`) now spawns `gh` up to three times per run. Offline or
+- `axioms doctor` (and so `axioms check`) now spawns `gh` up to four times per run. Offline or
   unauthenticated runs stay green with a notice, so the gate degrades rather than blocks.
 - The required status checks are coupled to the template's ci.yml job names. A test in
   `cli/rules.core.test.ts` parses both files and fails when they diverge, so renaming a CI job
   forces the ruleset file to follow.
-- One approving review means a solo maintainer cannot approve their own PR; with no bypass actors,
-  merging alone requires changing the file. That is the point: loosening protection is a reviewed
-  factory change, not a settings tweak.
+- One approving review means a solo maintainer cannot approve a PR they opened themselves; with no
+  bypass actors, the way through is a second identity, not a looser file. Loosening protection
+  stays a reviewed factory change, not a settings tweak. A solo owner sets up the bot once per
+  machine (`AXIOMS_BOT_TOKEN`) and adds the bot to each project as a collaborator. A PR the
+  owner opens by hand still needs another reviewer.
+- `tests/skills.test.ts` couples the skill to the ruleset: while the file requires a review, the
+  pull-request skill must run `gh pr create` with `AXIOMS_BOT_TOKEN`.
+- The first push of a project needs no `--no-verify`: `main` passes doctor as not verified, and
+  the next push fails until `rules --apply` has run. Between the two pushes `main` is unprotected,
+  which is the same window as the old "no remote yet" case.
 - Rulesets on private repositories need GitHub Pro or a public repo. On the Free plan (the
   factory's own repo today) doctor reports GitHub's 403 message as not-verified and `axioms rules
   --apply` fails with the same reason, so the feature waits on the plan or on the repo going
@@ -100,3 +132,12 @@ carry for one JSON document. `gh` is already how agents authenticate to GitHub h
   "not verified: no git remotes found". That exercises the unavailable path end to end; the green
   and drift paths are proven by the fixture tests above, and `--apply` has not been run against a
   live repo.
+- `cli/rules.core.test.ts` covers `branchLookupFailure`: a branch that exists, a 404, and any
+  other failure passed through. Live, against Pierre-Mike/small-tools while it was empty: GitHub
+  answered `default_branch: "main"`, `Branch not found (HTTP 404)` for the branch and `[]` for its
+  rules. Doctor under v0.12.0 reported six github findings there; with this change it prints the
+  one not-verified notice "main is not on Pierre-Mike/small-tools yet: push it, then run `bunx
+  axioms rules --apply`" and no github finding.
+- `tests/skills.test.ts` fails with the pull-request skill as v0.12.0 shipped it and passes with
+  the `AXIOMS_BOT_TOKEN` line. The bot account itself is not tested: it needs a second GitHub
+  login, which only the owner can create.

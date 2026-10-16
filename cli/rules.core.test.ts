@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   autoMergeOff,
+  branchLookupFailure,
   checkGithubRules,
   type GithubState,
   githubNotice,
@@ -101,6 +102,37 @@ describe("githubNotice", () => {
       "– [github] branch protection not verified: gh is not authenticated",
     )
     expect(githubNotice(live({}))).toBeUndefined()
+  })
+})
+
+describe("branchLookupFailure", () => {
+  const repo = "Pierre-Mike/small-tools"
+
+  it("lets the check run when the default branch exists on GitHub", () => {
+    expect(
+      branchLookupFailure({ repo, branch: "main", lookup: { ok: true, reason: "" } }),
+    ).toBeUndefined()
+  })
+
+  it("reports a repo whose default branch was never pushed, with the order to fix it", () => {
+    // An empty repo still names `main` as its default branch, and GET rules/branches/main answers
+    // `200 []`, which would fail every rule before the first push could happen.
+    const state = branchLookupFailure({
+      repo,
+      branch: "main",
+      lookup: { ok: false, reason: "Branch not found (HTTP 404)" },
+    })
+    expect(state).toEqual({
+      kind: "unavailable",
+      reason:
+        "main is not on Pierre-Mike/small-tools yet: push it, then run `bunx axioms rules --apply`",
+    })
+  })
+
+  it("passes any other failure through as the reason", () => {
+    expect(
+      branchLookupFailure({ repo, branch: "main", lookup: { ok: false, reason: "HTTP 502" } }),
+    ).toEqual({ kind: "unavailable", reason: "HTTP 502" })
   })
 })
 

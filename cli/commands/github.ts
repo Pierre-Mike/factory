@@ -6,7 +6,12 @@
  */
 import { join } from "node:path"
 import { isRecord } from "../doctor.core"
-import { type GithubRulesInput, type GithubState, RULES_FILE } from "../rules.core"
+import {
+  branchLookupFailure,
+  type GithubRulesInput,
+  type GithubState,
+  RULES_FILE,
+} from "../rules.core"
 import { PKG_ROOT, readJson } from "../shell"
 
 export interface GhResult {
@@ -73,6 +78,12 @@ export const readGithubState = (root: string): GithubState => {
   if (branch === "") {
     return { kind: "unavailable", reason: `could not read the default branch of ${resolved.repo}` }
   }
+  const lookup = gh({
+    args: ["api", `repos/${resolved.repo}/branches/${encodeURIComponent(branch)}`],
+    cwd: root,
+  })
+  const missing = branchLookupFailure({ repo: resolved.repo, branch, lookup })
+  if (missing !== undefined) return missing
   const rules = gh({
     args: ["api", `repos/${resolved.repo}/rules/branches/${encodeURIComponent(branch)}`],
     cwd: root,

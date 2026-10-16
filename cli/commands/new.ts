@@ -95,5 +95,9 @@ export const newProject = async (argv: ReadonlyArray<string>): Promise<void> => 
 next:
   cd ${relative(process.cwd(), target) || "."}
   bun run check && bun run smoke
-  bun run dev`)
+  bun run dev
+
+on GitHub, in this order (doctor checks branch protection once main is pushed):
+  gh repo create <owner>/<name> --source . --remote origin --push
+  bunx axioms rules --apply`)
 }

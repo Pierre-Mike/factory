@@ -104,6 +104,22 @@ A project pins the harness as `github:Pierre-Mike/factory#vX.Y.Z`. `new` pins th
 own version, so run it from a checkout of a release tag. To try an unreleased checkout, pass
 `--harness file:<path>` and set `AXIOMS_ALLOW_LOCAL_HARNESS=1`, as the selftest does.
 
+To put a project on GitHub, push `main` first, then protect it:
+
+```bash
+gh repo create <owner>/my-app --source . --remote origin --push
+bunx axioms rules --apply   # the branch ruleset, and auto-merge on
+```
+
+The ruleset requires one approving review, and GitHub never lets a PR's author approve it. So that
+you can approve what an agent opens, agents open PRs as a second GitHub account:
+
+1. Create a machine user (one free account per person is allowed) and add it to the project as a
+   collaborator with write access.
+2. Signed in as the machine user, create a classic token with `public_repo` scope (`repo` for a
+   private project). Fine-grained tokens can't reach repos another account owns.
+3. Export it as `AXIOMS_BOT_TOKEN` in your shell. The pull-request skill opens PRs with it.
+
 Every project's CI runs `check`, `smoke`, `deploy-dry-run`, `workflow-lint` (actionlint + zizmor),
 `secret-scan` (gitleaks, also on every commit via the pre-commit hook) and `pr-body` (the PR body
 fills every section of the PR template). On a CI runner each scanner is downloaded at an exact

@@ -90,8 +90,14 @@ wait for a yes. Then:
 
 ```sh
 git push -u origin HEAD
-gh pr create --base main --title "<title>" --body-file "$(git rev-parse --git-dir)/PR_BODY.md"
+GH_TOKEN="${AXIOMS_BOT_TOKEN:-$(gh auth token)}" \
+  gh pr create --base main --title "<title>" --body-file "$(git rev-parse --git-dir)/PR_BODY.md"
 ```
+
+The branch ruleset needs one approving review, and GitHub never lets a PR's author approve it.
+`AXIOMS_BOT_TOKEN` is a token for a separate bot account, so the bot opens the PR and the user can
+approve it. When the variable is unset, the PR opens as the user, who then cannot approve it alone.
+Say so in the report.
 
 Add `--draft` when the user asks for a draft. For an open PR on this branch
 (`gh pr view --json number,url`), update it instead:
