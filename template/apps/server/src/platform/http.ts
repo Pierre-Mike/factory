@@ -4,9 +4,12 @@
  * `STATUS_BY_TAG` is an allowlist. Registering a tag declares it safe to show the client at its
  * status. An unregistered tag, or a defect caught by `onUnexpectedError`, becomes a redacted
  * `InternalServerError` 500 and the real error is logged. Forgetting to register a tag fails safe.
+ * Hono's own `HTTPException` (thrown by `hono/validator` on malformed JSON, by `bodyLimit`, by the
+ * auth middleware) keeps its 4xx status through a tag in `TAG_BY_HTTP_EXCEPTION_STATUS`.
  */
 import { Effect, type ManagedRuntime, Result } from "effect"
 import type { Context, ErrorHandler, NotFoundHandler } from "hono"
+import { HTTPException } from "hono/http-exception"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 export interface TaggedError {
@@ -20,6 +23,18 @@ const INTERNAL_SERVER_ERROR = { _tag: "InternalServerError" } as const
 
 const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
   InvalidVerboseFlag: 400,
+  BadRequest: 400,
+  Unauthorized: 401,
+  Forbidden: 403,
+  PayloadTooLarge: 413,
+}
+
+/** The tag an `HTTPException` answers with, by its status. Each one is registered above. */
+const TAG_BY_HTTP_EXCEPTION_STATUS: Readonly<Record<number, string>> = {
+  400: "BadRequest",
+  401: "Unauthorized",
+  403: "Forbidden",
+  413: "PayloadTooLarge",
 }
 
 export const errorEnvelope = (error: TaggedError) => {
@@ -54,8 +69,17 @@ export const respond = async <A, E extends TaggedError, R>(input: {
 export const onNotFound: NotFoundHandler = (c) =>
   c.json({ ok: false as const, error: { _tag: "NotFound" } as const }, 404)
 
-/** Defects (throws that bypass the Result boundary) get the same redact-and-log treatment. */
+/**
+ * A thrown error bypassed the Result boundary. An `HTTPException` with a tagged status answers at
+ * that status; anything else is a defect and gets the same redact-and-log treatment as an
+ * unregistered tag.
+ */
 export const onUnexpectedError: ErrorHandler = (err, c) => {
+  const tag = err instanceof HTTPException ? TAG_BY_HTTP_EXCEPTION_STATUS[err.status] : undefined
+  if (tag !== undefined) {
+    const { body, status } = errorEnvelope({ _tag: tag })
+    return c.json(body, status)
+  }
   console.error("unexpected defect reached the http boundary:", err)
   return c.json({ ok: false as const, error: INTERNAL_SERVER_ERROR }, 500)
 }

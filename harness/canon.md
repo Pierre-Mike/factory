@@ -59,6 +59,9 @@ shared/                        # effect Schema contracts used by server and web
 - Database rows are `unknown` until decoded with a Schema in the slice's `*.io.ts`.
 - Failures cross HTTP as the shared `ApiErrorBody` envelope. `STATUS_BY_TAG` in
   `platform/http.ts` is an allowlist. An unregistered tag returns a redacted 500 and is logged.
+  A Hono `HTTPException` (malformed JSON, `bodyLimit`, the auth middleware) keeps its 400, 401,
+  403 or 413 status with the tag `TAG_BY_HTTP_EXCEPTION_STATUS` gives it; any other thrown error
+  is a redacted 500. `platform/http.test.ts` pins both.
 - Shared Schema contracts live in `shared/src`. The web client decodes every response with them,
   and excess fields are rejected.
 - Define `queryOptions` once. The route loader calls `ensureQueryData`, the component calls
