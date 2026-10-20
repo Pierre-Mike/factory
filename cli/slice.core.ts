@@ -19,9 +19,39 @@ export const pascalCase = (name: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("")
 
+export const SLICE_USAGE =
+  "usage: axioms slice <feature> [--door] [--no-io]   (kebab-case, e.g. user-profile)\n" +
+  "  --door   publish <feature>.door.ts, the one file other slices may import\n" +
+  "  --no-io  no <feature>.io.ts and no Layer in runtime.ts, for a slice that owns no data"
+
+export type SliceArgs =
+  | { readonly ok: true; readonly name: string; readonly door: boolean; readonly io: boolean }
+  | { readonly ok: false; readonly error: string }
+
+const SLICE_FLAGS = ["--door", "--no-io"]
+
+export const parseSliceArgs = (args: ReadonlyArray<string>): SliceArgs => {
+  const unknownFlag = args.find((a) => a.startsWith("-") && !SLICE_FLAGS.includes(a))
+  if (unknownFlag !== undefined)
+    return { ok: false, error: `unknown flag ${unknownFlag}\n${SLICE_USAGE}` }
+  const name = args.find((a) => !a.startsWith("-")) ?? ""
+  if (!isSliceName(name)) return { ok: false, error: SLICE_USAGE }
+  const door = args.includes("--door")
+  const io = !args.includes("--no-io")
+  if (door && !io) {
+    return {
+      ok: false,
+      error: `--door publishes the io service, and --no-io writes none\n${SLICE_USAGE}`,
+    }
+  }
+  return { ok: true, name, door, io }
+}
+
 export const sliceFiles = (input: {
   readonly name: string
   readonly door: boolean
+  /** false: no *.io.ts, and a route that uses no service. */
+  readonly io: boolean
 }): Record<string, string> => {
   const { name } = input
   const P = pascalCase(name)
@@ -76,20 +106,30 @@ describe("build${P}", () => {
 })
 `,
     [`src/features/${name}/${name}.io.ts`]: `/**
- * I/O port for the \`${name}\` slice. Replace the stub with real I/O (deps.db is the D1-backed
- * SQL port). Routes depend only on the Tag.
+ * I/O port for the \`${name}\` slice. Routes depend only on the Tag. deps.db is the SQL port: D1 in
+ * the worker, in-memory SQLite with the real migrations in tests.
  */
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import type { AppDeps } from "../../platform/deps"
+
+// The stub needs no table. Replace it with a query against your migration.
+const FIND_BY_ID = "SELECT ? AS id"
+
+const ${P}Row = Schema.Struct({ id: Schema.String })
 
 export class ${P}Io extends Context.Service<
   ${P}Io,
   { readonly findById: (id: string) => Effect.Effect<{ readonly id: string }> }
 >()("${P}Io") {}
 
-export const ${P}IoLive = (_deps: AppDeps): Layer.Layer<${P}Io> =>
+export const ${P}IoLive = (deps: AppDeps): Layer.Layer<${P}Io> =>
   Layer.succeed(${P}Io, {
-    findById: (id) => Effect.succeed({ id }),
+    // A row that fails to decode is a defect: the boundary logs it and answers a redacted 500.
+    findById: (id) =>
+      Effect.promise(() => deps.db.first({ sql: FIND_BY_ID, params: [id] })).pipe(
+        Effect.flatMap((row) => Schema.decodeUnknownEffect(${P}Row)(row)),
+        Effect.orDie,
+      ),
   })
 `,
     [`src/features/${name}/${name}.routes.ts`]: `/**
@@ -129,33 +169,31 @@ export const build${P}App = (runtime: RouteRuntime<${P}Io>) =>
       }),
     )
 `,
-    [`src/features/${name}/${name}.routes.test.ts`]: `import { describe, expect, it } from "bun:test"
+    [`src/features/${name}/${name}.routes.test.ts`]: `/** The route through the real app, over in-memory SQLite with every migration applied. */
+import { describe, expect, it } from "bun:test"
 import { decodeApiErrorBody } from "@app/shared"
-import { Effect, Layer, ManagedRuntime } from "effect"
-import { ${P}Io } from "./${name}.io"
-import { build${P}App } from "./${name}.routes"
+import { testApp } from "../../platform/test-app.bun"
 
-const app = build${P}App(
-  ManagedRuntime.make(Layer.succeed(${P}Io, { findById: (id) => Effect.succeed({ id }) })),
-)
+// One database for the file. Call testApp() inside a test that writes rows, to start clean.
+const { request } = testApp()
 
-describe("GET /${name}", () => {
+describe("GET /api/${name}", () => {
   it("returns the payload for a valid id", async () => {
-    const res = await app.request("/?id=abc")
+    const res = await request("/api/${name}?id=abc")
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ id: "abc", message: "${name} works" })
   })
 
   it("maps a missing id to the shared 400 error envelope", async () => {
-    const res = await app.request("/")
+    const res = await request("/api/${name}")
     expect(res.status).toBe(400)
     expect(decodeApiErrorBody(await res.json()).error._tag).toBe("Invalid${P}Id")
   })
 })
 
-describe("POST /${name}/:id", () => {
+describe("POST /api/${name}/:id", () => {
   const post = (body: unknown) =>
-    app.request("/abc", {
+    request("/api/${name}/abc", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -201,6 +239,7 @@ describe.skipIf(BASE === undefined)("smoke: /api/${name}", () => {
 })
 `,
   }
+  if (!input.io) return withoutIo({ files, name })
   if (input.door) {
     files[`src/features/${name}/${name}.door.ts`] = `/**
  * Published door for the \`${name}\` slice: the one file another slice may import. Consumers
@@ -211,6 +250,68 @@ export { ${P}Io } from "./${name}.io"
 `
   }
   return files
+}
+
+/** A slice that owns no data: the route calls the pure core and nothing else. */
+const withoutIo = (input: {
+  readonly files: Record<string, string>
+  readonly name: string
+}): Record<string, string> => {
+  const { name } = input
+  const P = pascalCase(name)
+  const files = Object.fromEntries(
+    Object.entries(input.files).filter(([path]) => path !== `src/features/${name}/${name}.io.ts`),
+  )
+  files[`src/features/${name}/${name}.routes.ts`] = `/**
+ * Hono shell for the \`${name}\` slice, which owns no data: pure core in the middle, shared error
+ * envelope on a failure. To read through another slice, import its \`<feature>.door\` and name its
+ * service in \`RouteRuntime<...>\`. Core results are lifted with \`Effect.fromResult\`.
+ * A JSON body is decoded by \`jsonBody(schema)\`, which also lets \`hc<AppType>\` type it.
+ */
+import { Effect, Schema } from "effect"
+import { Hono } from "hono"
+import { type RouteRuntime, respond } from "../../platform/http"
+import { jsonBody } from "../../platform/validate"
+import { build${P}, parse${P}Id } from "./${name}.core"
+
+/** The body \`POST /:id\` accepts. Move it to shared/src once the web app sends it. */
+const ${P}Input = Schema.Struct({ message: Schema.String })
+
+export const build${P}App = (runtime: RouteRuntime<never>) =>
+  new Hono()
+    .get("/", (c) =>
+      respond({
+        c,
+        runtime,
+        program: Effect.gen(function* () {
+          const id = yield* Effect.fromResult(parse${P}Id(c.req.query("id")))
+          return build${P}({ id })
+        }),
+      }),
+    )
+    .post("/:id", jsonBody(${P}Input), (c) =>
+      respond({
+        c,
+        runtime,
+        program: Effect.succeed({ id: c.req.param("id"), message: c.req.valid("json").message }),
+      }),
+    )
+`
+  return files
+}
+
+/** What the shell prints after generating a slice. */
+export const nextSteps = (input: { readonly name: string; readonly io: boolean }): string => {
+  const { name } = input
+  const steps = [
+    ...(input.io ? [`add a migration in apps/server/migrations/ if ${name} stores data`] : []),
+    `write the pure logic in ${name}.core.ts and its test`,
+    ...(input.io ? [`replace the stub query in ${name}.io.ts (deps.db is the SQL port)`] : []),
+    `register new error tags in platform/http.ts, and remove Invalid${pascalCase(name)}Id once ${name}.core.ts no longer defines it`,
+    `make smoke/${name}.smoke.test.ts check the real behaviour`,
+    "bun run check && bun run smoke",
+  ]
+  return `next steps:\n${steps.map((step, i) => `  ${i + 1}. ${step}`).join("\n")}`
 }
 
 const FEATURE_IMPORT =
@@ -269,19 +370,24 @@ export interface WiringSources {
 }
 
 /**
- * All three edits that wire a slice in, or the first one that cannot apply. The shell writes nothing
+ * The edits that wire a slice in (runtime.ts only when it has io), or the first one that cannot
+ * apply. The shell writes nothing
  * until this succeeds, so a missing anchor never leaves a half-generated slice behind.
  */
 export const wireSlice = (input: {
   readonly sources: WiringSources
   readonly name: string
+  /** false: runtime.ts is left unchanged, since the slice has no Layer. */
+  readonly io: boolean
 }):
   | { readonly ok: true; readonly sources: WiringSources }
   | { readonly ok: false; readonly error: string } => {
   const { sources, name } = input
   const api = mountRoute({ api: sources.api, name })
   if (!api.ok) return api
-  const runtime = registerLayer({ runtime: sources.runtime, name })
+  const runtime: Patch = input.io
+    ? registerLayer({ runtime: sources.runtime, name })
+    : { ok: true, text: sources.runtime }
   if (!runtime.ok) return runtime
   const http = registerTag({ http: sources.http, tag: `Invalid${pascalCase(name)}Id`, status: 400 })
   if (!http.ok) return http

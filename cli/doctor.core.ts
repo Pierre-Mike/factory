@@ -6,6 +6,7 @@
 import { posix } from "node:path"
 import { extractCanon } from "./canon.core"
 import { releaseSpec } from "./new.core"
+import { pascalCase } from "./slice.core"
 
 export const HARNESS_PACKAGE = "@pierre-mike/axioms"
 export const HARNESS_BIOME = `${HARNESS_PACKAGE}/biome`
@@ -484,8 +485,23 @@ const checkAllowlist = (input: DoctorInput): Finding[] => {
     .map((tag) => ({
       rule: "errors",
       problem: `STATUS_BY_TAG allowlists "${tag}", but no code under apps/server/src creates it`,
-      remedy: `create the tag ({ _tag: "${tag}" }) where that failure happens, or remove ${tag} from STATUS_BY_TAG in ${HTTP_BOUNDARY}`,
+      remedy: allowlistRemedy({ tag, featureNames: input.featureNames }),
     }))
+}
+
+/**
+ * `axioms slice <name>` registers `Invalid<Name>Id` for its stub core. Once that tag is orphaned,
+ * the fix is to remove it, so say which slice left it. Any other orphan may be a tag still to write.
+ */
+const allowlistRemedy = (input: {
+  readonly tag: string
+  readonly featureNames: ReadonlyArray<string>
+}): string => {
+  const remove = `remove ${input.tag} from STATUS_BY_TAG in ${HTTP_BOUNDARY}`
+  const slice = input.featureNames.find((name) => input.tag === `Invalid${pascalCase(name)}Id`)
+  return slice === undefined
+    ? `create the tag ({ _tag: "${input.tag}" }) where that failure happens, or ${remove}`
+    : `${remove}: \`axioms slice ${slice}\` added it for the stub core, which no longer uses it`
 }
 
 /** The canon and the generated code are written for this Effect major (Result, Context.Service). */

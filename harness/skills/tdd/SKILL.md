@@ -17,7 +17,7 @@ don't ask the user where a test goes when the layer is obvious.
 | Behavior | Test file | How it runs |
 |---|---|---|
 | Domain logic: a calculation, a parse, a rule, a tagged failure | `features/<f>/<f>.core.test.ts` next to `<f>.core.ts` | Plain data in and out. No Effect runtime, no clock, no mocks. |
-| HTTP mapping: status codes, the `ApiErrorBody` envelope, query and body decoding | `features/<f>/<f>.routes.test.ts` | `app.request(...)` over a `ManagedRuntime` built from test Layers, or the real migrations on in-memory SQLite |
+| HTTP mapping: status codes, the `ApiErrorBody` envelope, query and body decoding | `features/<f>/<f>.routes.test.ts` | `testApp().request("/api/<f>")` from `platform/test-app.bun.ts`: the real app over the real migrations on in-memory SQLite. A `ManagedRuntime` over test Layers only for a service you must fake |
 | Wiring: the Worker, D1, assets, `api.ts` mounts | `apps/server/smoke/<f>.smoke.test.ts` | `bun run smoke` against `wrangler dev` |
 
 Push each test as low as it can go. A rule you can test in the core doesn't belong in a route
@@ -88,7 +88,8 @@ Change an assertion only when the intended behavior changed, and say why.
 The only seam to fake is an `*.io.ts` service. Provide a fake with `Layer.succeed(Service, {...})`
 and build the runtime from it, as `health.routes.test.ts` does with its frozen clock. Don't mock a
 core module, a route or an internal helper, and don't use `mock.module`. Run database tests
-against the real migrations on in-memory SQLite, not against a mocked SQL port.
+through `testApp()` from `platform/test-app.bun.ts`, which applies the real migrations to a fresh
+in-memory SQLite database, not against a mocked SQL port.
 
 Inject clocks, randomness and ids as data. Core tests pass `now` in. Tests may use Bun APIs; code
 under `src/` may not.
