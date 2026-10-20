@@ -65,7 +65,8 @@ describe("checkGithubRules", () => {
     )
     const found = problems(live({ rules: stripped }))
     expect(found).toContain('CI job "smoke" is not a required status check on the default branch')
-    expect(found).toHaveLength(5)
+    expect(found).toContain('CI job "e2e" is not a required status check on the default branch')
+    expect(found).toHaveLength(6)
   })
 
   it("flags a review requirement below the file's, and accepts a stricter one", () => {

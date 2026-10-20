@@ -16,8 +16,8 @@ Branch protection is a file the harness owns, and a missing rule is a failing do
 
 - `harness/github.rules.json` is a GitHub repository ruleset (the shape `POST
   /repos/{owner}/{repo}/rulesets` accepts, same as the UI's import/export) for the default branch:
-  pull requests before merge with no required approval, which still blocks direct pushes, the six
-  `template/.github/workflows/ci.yml` jobs (`check`, `smoke`, `deploy-dry-run`, `pr-body`,
+  pull requests before merge with no required approval, which still blocks direct pushes, the seven
+  `template/.github/workflows/ci.yml` jobs (`check`, `smoke`, `e2e`, `deploy-dry-run`, `pr-body`,
   `workflow-lint`, `secret-scan`) as required status checks, linear history, no force pushes
   (`non_fast_forward`), no deletion, merge by squash or rebase only, no bypass actors. Repository
   auto-merge on is part of the expected state, so `gh pr merge --auto` queues a PR to merge once
@@ -99,7 +99,7 @@ ruleset, so an admin, or an agent with the admin's login, could also merge past 
   `cli/rules.core.test.ts` parses both files and fails when they diverge, so renaming a CI job
   forces the ruleset file to follow.
 - Nothing enforces a human review. Agents push and open PRs with the owner's login, so GitHub
-  cannot tell an agent's merge from the owner's. What still gates `main` is the PR and the six
+  cannot tell an agent's merge from the owner's. What still gates `main` is the PR and the seven
   green checks. The human review rests on the skill's instruction, which is advice, not a wall.
 - Doctor still accepts a live ruleset stricter than the file, so a project protected by v0.13.0
   or earlier (one required review) passes until `rules --apply` lowers it to zero.

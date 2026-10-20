@@ -217,6 +217,17 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     code: "export const v = process.env.X\n",
     expect: [],
   },
+  // browser tests run on Bun under `axioms e2e`: tooling, like smoke/
+  {
+    path: "apps/web/e2e/health.e2e.ts",
+    code: "export const v = process.env.E2E_URL\nconsole.log(Bun.version, v)\n",
+    expect: [],
+  },
+  {
+    path: "apps/web/src/e2e/helpers.ts",
+    code: "export const v = process.env.E2E_URL\n",
+    expect: ["global variable process"],
+  },
   {
     path: "apps/server/src/api.ts",
     code: 'export const f = () => console.log("x")\n',

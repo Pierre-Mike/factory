@@ -18,6 +18,7 @@ apps/server/
   migrations/                  # D1 migrations; tests run against the same files
   smoke/                       # HTTP checks against a running `wrangler dev`
 apps/web/                      # Vite + React + TanStack Router + Query, served as Worker assets
+  e2e/                         # browser tests (*.e2e.ts) against the built app on `wrangler dev`
 shared/                        # effect Schema contracts used by server and web
 ```
 
@@ -94,6 +95,11 @@ shared/                        # effect Schema contracts used by server and web
   runs `axioms ci-dry-run`: actionlint and zizmor on the workflows, then every job of `ci.yml`
   replayed in a fresh clone of HEAD outside the project folder. A step it cannot reproduce fails
   the dry run. Run it by hand with `bun run ci:dry`.
+- What a user sees is tested in a browser. `apps/web/e2e/*.e2e.ts` drive headless chromium
+  (Playwright) against the built web app on a throwaway `wrangler dev`. `axioms e2e` runs them
+  and always stops the server, also when a test fails or the run is interrupted. CI runs it in
+  the `e2e` job and the pre-push hook runs it before every push. `axioms doctor` fails when
+  `ci.yml` drops the job or `lefthook.yml` skips or redefines the hook.
 - Every PR runs `axioms deploy --dry-run` (the worker bundled exactly as `wrangler deploy` would,
   every migration applied to a fresh D1) and `axioms lint-workflows`. A real `axioms deploy`
   refuses while placeholders remain in `wrangler.jsonc`.
@@ -199,15 +205,19 @@ harness. Fix the note, never the gate, and never copy a second notes gate into t
 6. Put contracts the web uses in `shared/src`.
 7. (web) Add `<feature>.queries.ts` and `<feature>.route.tsx`.
 8. Add a `smoke/<feature>.smoke.test.ts` that exercises the slice over real HTTP.
-9. `bun run check`, then `bun run smoke`.
+9. A user-visible feature adds or extends a browser test in `apps/web/e2e/` (`<feature>.e2e.ts`)
+   that does what a user does: open the page, act, and check what it shows.
+10. `bun run check`, then `bun run smoke` and `bun run e2e`.
 
 ## Commands
 
 ```bash
 bun install        # installs dependencies and git hooks
 bun run dev        # wrangler dev (API, :8787) + vite (web, :5173)
+bun run dev --port 0 --persist-to .wrangler/mine  # a free port and its own D1 state; prints the URL
 bun run check      # lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, duplication
 bun run smoke      # build the web app, start wrangler dev locally, run smoke/ and the behavior pass over HTTP
+bun run e2e        # the same server, then apps/web/e2e/*.e2e.ts in headless chromium
 bun run slice      # generate a feature slice
 bun run deploy:dry # bundle the worker and apply migrations locally, no Cloudflare account needed
 bun run ci:dry     # replay ci.yml on a clean clone (pre-push does this for CI/CD changes)

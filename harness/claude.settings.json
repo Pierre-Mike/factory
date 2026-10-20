@@ -4,6 +4,7 @@
     "allow": [
       "Bash(bun run check)",
       "Bash(bun run smoke)",
+      "Bash(bun run e2e)",
       "Bash(bun run dev)",
       "Bash(bun run lint)",
       "Bash(bun run deploy:dry)",
@@ -16,7 +17,8 @@
       "Bash(bunx axioms secret-scan --staged)",
       "Bash(bunx axioms commit-msg:*)",
       "Bash(bunx axioms biome check --write --no-errors-on-unmatched:*)",
-      "Bash(bunx axioms ci-dry-run)"
+      "Bash(bunx axioms ci-dry-run)",
+      "Bash(bunx axioms e2e)"
     ]
   }
 }

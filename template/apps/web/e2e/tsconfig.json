@@ -1,0 +1,8 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  // Runs on Bun (bun:test, playwright), not in the browser bundle: its own project, so the web
+  // app's src never sees Bun's types.
+  "compilerOptions": { "types": ["bun"], "outDir": "dist", "rootDir": "." },
+  "references": [{ "path": "../../../shared" }],
+  "include": ["."]
+}

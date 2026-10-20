@@ -9,65 +9,22 @@
  */
 import { rm } from "node:fs/promises"
 import { join } from "node:path"
-import type { Subprocess } from "bun"
-import { run, type Sink, teeStream } from "../shell"
+import { localUrl } from "../devserver.core"
+import { run } from "../shell"
 import { behavior } from "./behavior"
+import { applyMigrations, freePorts, type Service, startWrangler, waitForHealth } from "./devserver"
 import { failedNames, type Gate, type GateRun, runGates } from "./gates"
 
 const PERSIST = ".wrangler/smoke"
-
-/** Poll /api/health for up to 60s, giving up as soon as wrangler dev has exited. */
-const waitForHealth = async (input: {
-  readonly url: string
-  readonly alive: () => boolean
-}): Promise<boolean> => {
-  const deadline = performance.now() + 60_000
-  while (performance.now() < deadline && input.alive()) {
-    try {
-      const res = await fetch(`${input.url}/api/health`)
-      if (res.ok) return true
-    } catch {
-      // not listening yet
-    }
-    await Bun.sleep(500)
-  }
-  return false
-}
 
 export const smoke = async (input: {
   readonly root: string
   readonly collect: boolean
 }): Promise<GateRun> => {
   const server = join(input.root, "apps", "server")
-  const env = { CI: "1", WRANGLER_SEND_METRICS: "false" }
-  const port = 8800 + Math.floor(Math.random() * 200)
-  const url = `http://127.0.0.1:${port}`
-  let dev: Subprocess | undefined
-  let devLog: Promise<void> | undefined
-
-  const spawnDev = (sink: Sink | undefined): Subprocess => {
-    const cmd = [
-      "bunx",
-      "wrangler",
-      "dev",
-      "--local",
-      "--ip",
-      "127.0.0.1",
-      "--port",
-      String(port),
-      "--persist-to",
-      PERSIST,
-      "--var",
-      "ENVIRONMENT:development",
-    ]
-    const shared = { cwd: server, env: { ...process.env, ...env } }
-    if (sink === undefined) {
-      return Bun.spawn(cmd, { ...shared, stdout: "ignore" as const, stderr: "inherit" as const })
-    }
-    const proc = Bun.spawn(cmd, { ...shared, stdout: "ignore" as const, stderr: "pipe" as const })
-    devLog = teeStream({ stream: proc.stderr, sink })
-    return proc
-  }
+  const [port = 0, inspectorPort = 0] = freePorts(2)
+  const url = localUrl(port)
+  let dev: Service | undefined
 
   const gates: ReadonlyArray<Gate> = [
     [
@@ -83,16 +40,21 @@ export const smoke = async (input: {
       "migrations",
       async (sink) => {
         await rm(join(server, PERSIST), { recursive: true, force: true })
-        const cmd = ["bunx", "wrangler", "d1", "migrations", "apply", "DB", "--local"]
-        return (await run({ cmd: [...cmd, "--persist-to", PERSIST], cwd: server, env, sink })) === 0
+        return applyMigrations({ server, persistTo: PERSIST, sink })
       },
     ],
     [
       "wrangler dev",
       async (sink) => {
         console.error(`wrangler dev on ${url}`)
-        const proc = spawnDev(sink)
-        dev = proc
+        dev = startWrangler({
+          server,
+          port,
+          inspectorPort,
+          persistTo: PERSIST,
+          output: sink ?? "quiet",
+        })
+        const proc = dev.proc
         if (await waitForHealth({ url, alive: () => proc.exitCode === null })) return true
         console.error(
           proc.exitCode === null
@@ -124,12 +86,6 @@ export const smoke = async (input: {
     )
     return result
   } finally {
-    const proc = dev
-    if (proc !== undefined) {
-      proc.kill("SIGINT")
-      await Promise.race([proc.exited, Bun.sleep(5_000)])
-      if (proc.exitCode === null) proc.kill("SIGKILL")
-    }
-    await devLog
+    await dev?.stop()
   }
 }

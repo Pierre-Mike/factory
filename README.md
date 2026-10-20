@@ -35,9 +35,9 @@ flowchart TB
     subgraph checkpoints["4. Five checkpoints between the model and main"]
         s0(["The agent writes code"]) --> s1["<b>1. Session</b><br/>canon as AGENTS.md, skills,<br/>gate-only allowlist"]
         s1 -->|commit| s2["<b>2. pre-commit</b><br/>gitleaks, Biome + Grit,<br/>notes gate, commit-msg"]
-        s2 -->|push| s3["<b>3. pre-push</b><br/>axioms check,<br/>CI dry run"]
-        s3 -->|open PR| s4["<b>4. CI</b><br/>check, smoke, deploy dry run,<br/>workflow lint, secret scan, pr-body"]
-        s4 -->|all green| s5["<b>5. Ruleset</b><br/>PRs only, six required checks,<br/>a review, no force push"]
+        s2 -->|push| s3["<b>3. pre-push</b><br/>axioms check,<br/>CI dry run, e2e"]
+        s3 -->|open PR| s4["<b>4. CI</b><br/>check, smoke, e2e, deploy dry run,<br/>workflow lint, secret scan, pr-body"]
+        s4 -->|all green| s5["<b>5. Ruleset</b><br/>PRs only, seven required checks,<br/>a review, no force push"]
         s5 -->|merge| s6(["main"])
         s2 & s3 & s4 -.->|red| fail["<b>Any red check</b><br/>the step stops, the agent reads<br/>the error and tries again"]
         fail -.->|back to the agent| s0
@@ -95,6 +95,7 @@ bun factory/cli/main.ts new my-app   # stamp, pin v<version>, install, format, c
 cd my-app
 bun run check       # every gate
 bun run smoke       # the real worker over HTTP, then bad bodies sent to every write route
+bun run e2e         # the saved browser tests, in headless chromium; pre-push runs them
 bun run slice x     # add a feature slice
 bun run deploy:dry  # bundle the worker and apply migrations locally (no Cloudflare account)
 bun run ci:dry      # replay ci.yml on a clean clone; pre-push runs it when CI/CD files change
@@ -115,9 +116,10 @@ Every change reaches `main` through a PR that passes the six CI checks. No appro
 agents open PRs under your login, and GitHub never counts a PR author's own approval. You review
 the PR, then merge it, or queue it with `gh pr merge --auto --squash` to merge once CI is green.
 
-Every project's CI runs `check`, `smoke`, `deploy-dry-run`, `workflow-lint` (actionlint + zizmor),
-`secret-scan` (gitleaks, also on every commit via the pre-commit hook) and `pr-body` (the PR body
-fills every section of the PR template). On a CI runner each scanner is downloaded at an exact
+Every project's CI runs `check`, `smoke`, `e2e` (the browser tests in `apps/web/e2e`),
+`deploy-dry-run`, `workflow-lint` (actionlint + zizmor), `secret-scan` (gitleaks, also on every
+commit via the pre-commit hook) and `pr-body` (the PR body fills every section of the PR
+template). On a CI runner each scanner is downloaded at an exact
 version and refused unless the archive matches the SHA256 pinned in `cli/tools.core.ts`. Every
 GitHub Action is pinned by commit SHA.
 
@@ -147,7 +149,7 @@ and commit the file. The factory's own CI runs it as the `gate-baseline` job.
 | `cli/` | The `axioms` command. Pure logic in `*.core.ts`, file and process work in `commands/`. |
 | `template/` | The app: Hono + Effect on Cloudflare Workers, D1, Vite + React + TanStack served as assets. |
 | `tests/rules.test.ts` | Lints fixtures through the shared config and checks each rule fires where it should. |
-| `tests/selftest.ts` | `new`, `sync`, `check`, `slice`, `smoke`, the deploy dry run and the CI dry run on a throwaway project, plus a deliberately broken workflow the CI dry run must catch and a malformed Agent Note the notes gate must reject. |
+| `tests/selftest.ts` | `new`, `sync`, `check`, `e2e` (passing, and failing without leaving a server behind), `slice`, `smoke`, two parallel `dev` runs, the deploy dry run and the CI dry run on a throwaway project, plus a deliberately broken workflow the CI dry run must catch and a malformed Agent Note the notes gate must reject. |
 | `tests/selftest-adopt.ts` | `adopt` on a throwaway plain git repository: refusals, live hooks, sync stability, the lite `check` and its evidence report, the PR body gate and the notes gate, with no wrangler anywhere. |
 
 ## How a project uses it
@@ -187,7 +189,7 @@ git add -A && git commit -m "chore: adopt the axioms harness"
   lefthook.yml) comes from `axioms sync`, which adopt runs.
 - The `lite` profile changes `axioms doctor`: it checks the gates adopt installs (Biome, hooks,
   agent docs, notes rules, the Claude Code settings and skills, the pinned package, must-pass
-  `check`, `secret-scan` and `pr-body` steps in CI) and skips the app-shaped ones (smoke, deploy,
+  `check`, `secret-scan` and `pr-body` steps in CI) and skips the app-shaped ones (smoke, e2e, deploy,
   the tsconfig chain, workspace references, the Effect major).
 - `axioms check` skips typecheck when the repo has no root `tsconfig.json` and the test run when
   there are no test files, each with a message; adopt never writes a tsconfig. A skipped gate
