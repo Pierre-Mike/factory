@@ -57,7 +57,8 @@ export interface DoctorInput {
   readonly featureNames: ReadonlyArray<string>
   readonly smokeFiles: ReadonlyArray<string>
   readonly allowlistedTags: ReadonlyArray<string>
-  readonly featureSource: string
+  /** Every .ts file under apps/server/src, paths relative to it (`platform/http.ts` included). */
+  readonly serverSources: ReadonlyArray<{ readonly path: string; readonly text: string }>
   /** The `effect` version range each workspace declares, e.g. `{ workspace: "shared", range: "^4.0.4" }`. */
   readonly effectRanges: ReadonlyArray<{ readonly workspace: string; readonly range: string }>
   /** Set by the factory's own self-test (AXIOMS_ALLOW_LOCAL_HARNESS=1), which tests an unreleased harness. */
@@ -459,14 +460,33 @@ const checkSmokeCoverage = (input: DoctorInput): Finding[] => {
     }))
 }
 
-const checkAllowlist = (input: DoctorInput): Finding[] =>
-  input.allowlistedTags
-    .filter((tag) => !input.featureSource.includes(`"${tag}"`))
+/** The file that holds STATUS_BY_TAG, relative to apps/server/src. */
+export const HTTP_BOUNDARY = "platform/http.ts"
+
+const ALLOWLIST_LITERAL = /STATUS_BY_TAG[^=]*=\s*\{[^}]*\}/
+
+/**
+ * The code that can create a tag: every non-test file, platform/http.ts included, minus the
+ * STATUS_BY_TAG literal itself, so an allowlist key never counts as its own definition.
+ */
+const tagSource = (sources: DoctorInput["serverSources"]): string =>
+  sources
+    .filter((file) => !file.path.endsWith(".test.ts"))
+    .map((file) =>
+      file.path === HTTP_BOUNDARY ? file.text.replace(ALLOWLIST_LITERAL, "") : file.text,
+    )
+    .join("\n")
+
+const checkAllowlist = (input: DoctorInput): Finding[] => {
+  const source = tagSource(input.serverSources)
+  return input.allowlistedTags
+    .filter((tag) => !source.includes(`"${tag}"`))
     .map((tag) => ({
       rule: "errors",
-      problem: `STATUS_BY_TAG allowlists "${tag}", but no feature code defines it`,
-      remedy: `remove ${tag} from platform/http.ts`,
+      problem: `STATUS_BY_TAG allowlists "${tag}", but no code under apps/server/src creates it`,
+      remedy: `create the tag ({ _tag: "${tag}" }) where that failure happens, or remove ${tag} from STATUS_BY_TAG in ${HTTP_BOUNDARY}`,
     }))
+}
 
 /** The canon and the generated code are written for this Effect major (Result, Context.Service). */
 export const EFFECT_MAJOR = 4
@@ -502,5 +522,5 @@ export const runDoctor = (input: DoctorInput): Finding[] => {
 export const parseAllowlistedTags = (httpSource: string): string[] => {
   const block = httpSource.match(/STATUS_BY_TAG[^=]*=\s*\{([^}]*)\}/)
   if (!block?.[1]) return []
-  return [...block[1].matchAll(/(\w+)\s*:\s*\d{3}/g)].flatMap((m) => (m[1] ? [m[1]] : []))
+  return [...block[1].matchAll(/"?(\w+)"?\s*:\s*\d{3}/g)].flatMap((m) => (m[1] ? [m[1]] : []))
 }

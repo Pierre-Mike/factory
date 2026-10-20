@@ -7,6 +7,7 @@ import {
   CLAUDE_SKILLS_DIR,
   type DoctorInput,
   type Finding,
+  HTTP_BOUNDARY,
   isRecord,
   parseAllowlistedTags,
   runDoctor,
@@ -43,16 +44,15 @@ const workspaceDirs = (input: { readonly root: string; readonly pkg: unknown }):
     .sort()
 }
 
-const featureSource = async (serverSrc: string): Promise<string> => {
+const serverSources = async (serverSrc: string): Promise<DoctorInput["serverSources"]> => {
   // An adopted (lite) repo has no apps/server at all; scanning a missing folder throws.
-  if (!existsSync(serverSrc)) return ""
+  if (!existsSync(serverSrc)) return []
   const glob = new Bun.Glob("**/*.ts")
-  const parts: string[] = []
-  for await (const file of glob.scan({ cwd: serverSrc })) {
-    if (file.endsWith(".test.ts") || file === "platform/http.ts") continue
-    parts.push(await Bun.file(join(serverSrc, file)).text())
+  const files: { path: string; text: string }[] = []
+  for await (const path of glob.scan({ cwd: serverSrc })) {
+    files.push({ path, text: await Bun.file(join(serverSrc, path)).text() })
   }
-  return parts.join("\n")
+  return files
 }
 
 const effectRanges = (input: {
@@ -140,10 +140,8 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     ciWorkflow: readYaml(join(root, ".github", "workflows", "ci.yml")),
     featureNames: listSubdirs(join(server, "src", "features")),
     smokeFiles: listDir(join(server, "smoke")),
-    allowlistedTags: parseAllowlistedTags(
-      readText(join(server, "src", "platform", "http.ts")) ?? "",
-    ),
-    featureSource: await featureSource(join(server, "src")),
+    allowlistedTags: parseAllowlistedTags(readText(join(server, "src", HTTP_BOUNDARY)) ?? ""),
+    serverSources: await serverSources(join(server, "src")),
     allowLocalHarness: process.env.AXIOMS_ALLOW_LOCAL_HARNESS === "1",
     harnessVersion: harnessVersion(),
     effectRanges: effectRanges({ root, workspaces: [".", ...workspaceDirs({ root, pkg })] }),

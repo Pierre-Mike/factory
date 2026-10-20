@@ -35,6 +35,10 @@ const HEALTHY_JOBS = {
   },
 }
 
+const HTTP_SOURCE = `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
+  InvalidVerboseFlag: 400,
+}`
+
 const healthy: DoctorInput = {
   canon: "the rules",
   biome: { extends: [HARNESS_BIOME], files: { includes: [...BIOME_FILE_INCLUDES] } },
@@ -67,7 +71,13 @@ const healthy: DoctorInput = {
   featureNames: ["health"],
   smokeFiles: ["health.smoke.test.ts"],
   allowlistedTags: ["InvalidVerboseFlag"],
-  featureSource: 'return Result.fail({ _tag: "InvalidVerboseFlag" })',
+  serverSources: [
+    {
+      path: "features/health/health.core.ts",
+      text: 'return Result.fail({ _tag: "InvalidVerboseFlag" })',
+    },
+    { path: "platform/http.ts", text: HTTP_SOURCE },
+  ],
   allowLocalHarness: false,
   harnessVersion: "0.7.0",
   effectRanges: [
@@ -350,6 +360,56 @@ describe("runDoctor", () => {
       ["errors"],
     )
   })
+
+  describe("allowlisted tags", () => {
+    const withHttp = (text: string): DoctorInput => ({
+      ...healthy,
+      allowlistedTags: parseAllowlistedTags(text),
+      serverSources: [...healthy.serverSources, { path: "platform/http.ts", text }],
+    })
+
+    it("accepts a tag that platform/http.ts creates outside STATUS_BY_TAG", () => {
+      const http = `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
+  BadRequest: 400,
+  InvalidVerboseFlag: 400,
+}
+export const badRequest = { _tag: "BadRequest" } as const`
+      expect(rules(withHttp(http))).toEqual([])
+    })
+
+    it("flags a tag that appears only as a key of STATUS_BY_TAG", () => {
+      const http = `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
+  "Orphan": 400,
+  InvalidVerboseFlag: 400,
+}`
+      expect(rules(withHttp(http))).toEqual(["errors"])
+    })
+
+    it("does not count a tag that only a test creates", () => {
+      expect(
+        rules({
+          ...healthy,
+          allowlistedTags: ["InvalidVerboseFlag", "InvalidDemoId"],
+          serverSources: [
+            ...healthy.serverSources,
+            { path: "features/demo/demo.core.test.ts", text: '{ _tag: "InvalidDemoId" }' },
+          ],
+        }),
+      ).toEqual(["errors"])
+    })
+
+    it("offers both remedies: create the tag, or remove it from STATUS_BY_TAG", () => {
+      const [finding] = runDoctor({
+        ...healthy,
+        allowlistedTags: ["InvalidVerboseFlag", "InvalidDemoId"],
+      })
+      expect(finding?.problem).toBe(
+        'STATUS_BY_TAG allowlists "InvalidDemoId", but no code under apps/server/src creates it',
+      )
+      expect(finding?.remedy).toContain('create the tag ({ _tag: "InvalidDemoId" })')
+      expect(finding?.remedy).toContain("or remove InvalidDemoId from STATUS_BY_TAG")
+    })
+  })
 })
 
 describe("effect major", () => {
@@ -367,6 +427,13 @@ describe("parseAllowlistedTags", () => {
   ItemNotFound: 404,
 }`
     expect(parseAllowlistedTags(source)).toEqual(["InvalidVerboseFlag", "ItemNotFound"])
+  })
+
+  it("reads a quoted key too", () => {
+    const source = `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
+  "Quoted": 400,
+}`
+    expect(parseAllowlistedTags(source)).toEqual(["Quoted"])
   })
 
   it("returns nothing when the allowlist is absent", () => {
@@ -392,7 +459,7 @@ describe("lite profile (axioms adopt)", () => {
     featureNames: [],
     smokeFiles: [],
     allowlistedTags: [],
-    featureSource: "",
+    serverSources: [],
     effectRanges: [{ workspace: ".", range: "^3.12.0" }],
   }
 
