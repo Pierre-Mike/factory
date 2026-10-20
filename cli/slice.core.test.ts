@@ -2,9 +2,12 @@ import { describe, expect, it } from "bun:test"
 import {
   isSliceName,
   mountRoute,
+  nextSteps,
+  parseSliceArgs,
   pascalCase,
   registerLayer,
   registerTag,
+  SLICE_USAGE,
   sliceFiles,
   wireSlice,
 } from "./slice.core"
@@ -46,7 +49,7 @@ describe("names", () => {
 
 describe("sliceFiles", () => {
   it("emits the canonical slice plus a smoke test", () => {
-    expect(Object.keys(sliceFiles({ name: "items", door: false })).sort()).toEqual([
+    expect(Object.keys(sliceFiles({ name: "items", door: false, io: true })).sort()).toEqual([
       "smoke/items.smoke.test.ts",
       "src/features/items/items.core.test.ts",
       "src/features/items/items.core.ts",
@@ -57,25 +60,88 @@ describe("sliceFiles", () => {
   })
 
   it("adds the door only when asked", () => {
-    expect(Object.keys(sliceFiles({ name: "items", door: true }))).toContain(
+    expect(Object.keys(sliceFiles({ name: "items", door: true, io: true }))).toContain(
       "src/features/items/items.door.ts",
     )
   })
 
   it("runs the route test over the shared in-memory SQLite app, not a stubbed service", () => {
-    const test = sliceFiles({ name: "items", door: false })[
-      "src/features/items/items.routes.test.ts"
-    ]
-    expect(test).toContain('import { testApp } from "../../platform/test-app.bun"')
-    expect(test).toContain('request("/api/items?id=abc")')
-    expect(test).not.toContain("Layer.succeed")
-    expect(test).not.toContain("ManagedRuntime")
+    for (const io of [true, false]) {
+      const test = sliceFiles({ name: "items", door: false, io })[
+        "src/features/items/items.routes.test.ts"
+      ]
+      expect(test).toContain('import { testApp } from "../../platform/test-app.bun"')
+      expect(test).toContain('request("/api/items?id=abc")')
+      expect(test).not.toContain("Layer.succeed")
+      expect(test).not.toContain("ManagedRuntime")
+    }
+  })
+
+  it("writes no io file and a route that uses no service with io off", () => {
+    const files = sliceFiles({ name: "items", door: false, io: false })
+    expect(Object.keys(files).sort()).toEqual([
+      "smoke/items.smoke.test.ts",
+      "src/features/items/items.core.test.ts",
+      "src/features/items/items.core.ts",
+      "src/features/items/items.routes.test.ts",
+      "src/features/items/items.routes.ts",
+    ])
+    const routes = files["src/features/items/items.routes.ts"]
+    expect(routes).toContain("runtime: RouteRuntime<never>")
+    expect(routes).not.toContain("ItemsIo")
+    expect(routes).not.toContain("items.io")
   })
 
   it("reads the stub io through the SQL port and decodes the row with a Schema", () => {
-    const io = sliceFiles({ name: "items", door: false })["src/features/items/items.io.ts"]
+    const io = sliceFiles({ name: "items", door: false, io: true })[
+      "src/features/items/items.io.ts"
+    ]
     expect(io).toContain("deps.db.first(")
     expect(io).toContain("Schema.decodeUnknownEffect(ItemsRow)")
+  })
+})
+
+describe("parseSliceArgs", () => {
+  it("reads the name and both flags in any order", () => {
+    expect(parseSliceArgs(["--no-io", "search"])).toEqual({
+      ok: true,
+      name: "search",
+      door: false,
+      io: false,
+    })
+    expect(parseSliceArgs(["posts", "--door"])).toEqual({
+      ok: true,
+      name: "posts",
+      door: true,
+      io: true,
+    })
+  })
+
+  it("refuses an unknown flag, a bad name, and a door with nothing to publish", () => {
+    expect(parseSliceArgs(["posts", "--io"])).toEqual({
+      ok: false,
+      error: `unknown flag --io\n${SLICE_USAGE}`,
+    })
+    expect(parseSliceArgs(["Posts"])).toEqual({ ok: false, error: SLICE_USAGE })
+    const both = parseSliceArgs(["search", "--door", "--no-io"])
+    expect(both.ok).toBe(false)
+    if (both.ok) return
+    expect(both.error).toContain("--door publishes the io service")
+  })
+
+  it("names --no-io in the usage line", () => {
+    expect(SLICE_USAGE).toContain("axioms slice <feature> [--door] [--no-io]")
+  })
+})
+
+describe("nextSteps", () => {
+  it("drops the io step when the slice has none", () => {
+    expect(nextSteps({ name: "items", io: true })).toContain("items.io.ts")
+    expect(nextSteps({ name: "items", io: false })).not.toContain("items.io.ts")
+  })
+
+  it("says to remove the stub tag once the core no longer defines it", () => {
+    expect(nextSteps({ name: "items", io: false })).toContain("remove InvalidItemsId")
   })
 })
 
@@ -129,7 +195,7 @@ describe("wireSlice", () => {
   const sources = { api: API, runtime: RUNTIME, http: HTTP }
 
   it("returns all three edited files together", () => {
-    const result = wireSlice({ sources, name: "items" })
+    const result = wireSlice({ sources, name: "items", io: true })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.sources.api).toContain('.route("/items", buildItemsApp(runtime))')
@@ -137,8 +203,23 @@ describe("wireSlice", () => {
     expect(result.sources.http).toContain("InvalidItemsId: 400")
   })
 
+  it("leaves runtime.ts unchanged when the slice has no io", () => {
+    const result = wireSlice({ sources, name: "items", io: false })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.sources.runtime).toBe(RUNTIME)
+    expect(result.sources.api).toContain('.route("/items", buildItemsApp(runtime))')
+    expect(result.sources.http).toContain("InvalidItemsId: 400")
+  })
+
+  it("does not need a mergeAll anchor when the slice has no io", () => {
+    expect(wireSlice({ sources: { ...sources, runtime: "" }, name: "items", io: false }).ok).toBe(
+      true,
+    )
+  })
+
   it("fails with the first missing anchor and returns no edits, even when it is the last file", () => {
-    const result = wireSlice({ sources: { ...sources, http: "" }, name: "items" })
+    const result = wireSlice({ sources: { ...sources, http: "" }, name: "items", io: true })
     expect(result).toEqual({
       ok: false,
       error: "platform/http.ts: no `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {`",

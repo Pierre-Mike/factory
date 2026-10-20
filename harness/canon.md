@@ -165,11 +165,14 @@ harness. Fix the note, never the gate, and never copy a second notes gate into t
 ## How to add a feature slice
 
 1. `bun run slice <feature>` generates the files, mounts the route in `api.ts`, registers the
-   Layer in `platform/runtime.ts` and the error tag in `platform/http.ts`. Never hand-copy a slice.
+   Layer in `platform/runtime.ts` and the stub's `Invalid<Feature>Id` tag in `platform/http.ts`.
+   For a slice that owns no data and composes others through their doors, pass `--no-io`: no
+   `<feature>.io.ts` and no Layer. Never hand-copy a slice.
 2. Add a migration in `apps/server/migrations/` if the slice stores data.
 3. Write the pure logic in `<feature>.core.ts` and its test.
-4. Replace the stub I/O in `<feature>.io.ts`.
-5. Register new error tags in `platform/http.ts`.
+4. Replace the stub query in `<feature>.io.ts`.
+5. Register new error tags in `platform/http.ts`. Remove `Invalid<Feature>Id` once the core no
+   longer defines it; `axioms doctor` names the slice that left it.
 6. Put contracts the web uses in `shared/src`.
 7. (web) Add `<feature>.queries.ts` and `<feature>.route.tsx`.
 8. Add a `smoke/<feature>.smoke.test.ts` that exercises the slice over real HTTP.

@@ -350,6 +350,18 @@ describe("runDoctor", () => {
       ["errors"],
     )
   })
+
+  it("names the slice that generated an orphaned stub tag", () => {
+    const findings = runDoctor({
+      ...healthy,
+      featureNames: ["health", "user-posts"],
+      smokeFiles: ["health.smoke.test.ts", "user-posts.smoke.test.ts"],
+      allowlistedTags: ["InvalidVerboseFlag", "InvalidUserPostsId"],
+    })
+    expect(findings.map((f) => f.remedy)).toEqual([
+      "remove InvalidUserPostsId from platform/http.ts: `axioms slice user-posts` added it for the stub core, which no longer uses it",
+    ])
+  })
 })
 
 describe("effect major", () => {

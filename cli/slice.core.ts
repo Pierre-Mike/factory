@@ -19,9 +19,39 @@ export const pascalCase = (name: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("")
 
+export const SLICE_USAGE =
+  "usage: axioms slice <feature> [--door] [--no-io]   (kebab-case, e.g. user-profile)\n" +
+  "  --door   publish <feature>.door.ts, the one file other slices may import\n" +
+  "  --no-io  no <feature>.io.ts and no Layer in runtime.ts, for a slice that owns no data"
+
+export type SliceArgs =
+  | { readonly ok: true; readonly name: string; readonly door: boolean; readonly io: boolean }
+  | { readonly ok: false; readonly error: string }
+
+const SLICE_FLAGS = ["--door", "--no-io"]
+
+export const parseSliceArgs = (args: ReadonlyArray<string>): SliceArgs => {
+  const unknownFlag = args.find((a) => a.startsWith("-") && !SLICE_FLAGS.includes(a))
+  if (unknownFlag !== undefined)
+    return { ok: false, error: `unknown flag ${unknownFlag}\n${SLICE_USAGE}` }
+  const name = args.find((a) => !a.startsWith("-")) ?? ""
+  if (!isSliceName(name)) return { ok: false, error: SLICE_USAGE }
+  const door = args.includes("--door")
+  const io = !args.includes("--no-io")
+  if (door && !io) {
+    return {
+      ok: false,
+      error: `--door publishes the io service, and --no-io writes none\n${SLICE_USAGE}`,
+    }
+  }
+  return { ok: true, name, door, io }
+}
+
 export const sliceFiles = (input: {
   readonly name: string
   readonly door: boolean
+  /** false: no *.io.ts, and a route that uses no service. */
+  readonly io: boolean
 }): Record<string, string> => {
   const { name } = input
   const P = pascalCase(name)
@@ -166,6 +196,7 @@ describe.skipIf(BASE === undefined)("smoke: /api/${name}", () => {
 })
 `,
   }
+  if (!input.io) return withoutIo({ files, name })
   if (input.door) {
     files[`src/features/${name}/${name}.door.ts`] = `/**
  * Published door for the \`${name}\` slice: the one file another slice may import. Consumers
@@ -176,6 +207,55 @@ export { ${P}Io } from "./${name}.io"
 `
   }
   return files
+}
+
+/** A slice that owns no data: the route calls the pure core and nothing else. */
+const withoutIo = (input: {
+  readonly files: Record<string, string>
+  readonly name: string
+}): Record<string, string> => {
+  const { name } = input
+  const P = pascalCase(name)
+  const files = Object.fromEntries(
+    Object.entries(input.files).filter(([path]) => path !== `src/features/${name}/${name}.io.ts`),
+  )
+  files[`src/features/${name}/${name}.routes.ts`] = `/**
+ * Hono shell for the \`${name}\` slice, which owns no data: pure core in the middle, shared error
+ * envelope on a failure. To read through another slice, import its \`<feature>.door\` and name its
+ * service in \`RouteRuntime<...>\`. Core results are lifted with \`Effect.fromResult\`.
+ */
+import { Effect } from "effect"
+import { Hono } from "hono"
+import { type RouteRuntime, respond } from "../../platform/http"
+import { build${P}, parse${P}Id } from "./${name}.core"
+
+export const build${P}App = (runtime: RouteRuntime<never>) =>
+  new Hono().get("/", (c) =>
+    respond({
+      c,
+      runtime,
+      program: Effect.gen(function* () {
+        const id = yield* Effect.fromResult(parse${P}Id(c.req.query("id")))
+        return build${P}({ id })
+      }),
+    }),
+  )
+`
+  return files
+}
+
+/** What the shell prints after generating a slice. */
+export const nextSteps = (input: { readonly name: string; readonly io: boolean }): string => {
+  const { name } = input
+  const steps = [
+    ...(input.io ? [`add a migration in apps/server/migrations/ if ${name} stores data`] : []),
+    `write the pure logic in ${name}.core.ts and its test`,
+    ...(input.io ? [`replace the stub query in ${name}.io.ts (deps.db is the SQL port)`] : []),
+    `register new error tags in platform/http.ts, and remove Invalid${pascalCase(name)}Id once ${name}.core.ts no longer defines it`,
+    `make smoke/${name}.smoke.test.ts check the real behaviour`,
+    "bun run check && bun run smoke",
+  ]
+  return `next steps:\n${steps.map((step, i) => `  ${i + 1}. ${step}`).join("\n")}`
 }
 
 const FEATURE_IMPORT =
@@ -234,19 +314,24 @@ export interface WiringSources {
 }
 
 /**
- * All three edits that wire a slice in, or the first one that cannot apply. The shell writes nothing
+ * The edits that wire a slice in (runtime.ts only when it has io), or the first one that cannot
+ * apply. The shell writes nothing
  * until this succeeds, so a missing anchor never leaves a half-generated slice behind.
  */
 export const wireSlice = (input: {
   readonly sources: WiringSources
   readonly name: string
+  /** false: runtime.ts is left unchanged, since the slice has no Layer. */
+  readonly io: boolean
 }):
   | { readonly ok: true; readonly sources: WiringSources }
   | { readonly ok: false; readonly error: string } => {
   const { sources, name } = input
   const api = mountRoute({ api: sources.api, name })
   if (!api.ok) return api
-  const runtime = registerLayer({ runtime: sources.runtime, name })
+  const runtime: Patch = input.io
+    ? registerLayer({ runtime: sources.runtime, name })
+    : { ok: true, text: sources.runtime }
   if (!runtime.ok) return runtime
   const http = registerTag({ http: sources.http, tag: `Invalid${pascalCase(name)}Id`, status: 400 })
   if (!http.ok) return http

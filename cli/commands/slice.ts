@@ -1,20 +1,17 @@
-/** `axioms slice <name> [--door]`: write a new feature slice and wire it in. */
+/** `axioms slice <name> [--door] [--no-io]`: write a new feature slice and wire it in. */
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { fail, readText, runTool } from "../shell"
-import { isSliceName, sliceFiles, type WiringSources, wireSlice } from "../slice.core"
-
-const USAGE = "usage: axioms slice <feature> [--door]   (kebab-case, e.g. user-profile)"
+import { nextSteps, parseSliceArgs, sliceFiles, type WiringSources, wireSlice } from "../slice.core"
 
 export const slice = async (input: {
   readonly root: string
   readonly args: ReadonlyArray<string>
 }) => {
-  const unknownFlag = input.args.find((a) => a.startsWith("-") && a !== "--door")
-  if (unknownFlag !== undefined) fail(`unknown flag ${unknownFlag}\n${USAGE}`)
-  const name = input.args.find((a) => !a.startsWith("-")) ?? ""
-  if (!isSliceName(name)) fail(USAGE)
+  const args = parseSliceArgs(input.args)
+  if (!args.ok) return fail(args.error)
+  const { name, door, io } = args
 
   const server = join(input.root, "apps", "server")
   if (existsSync(join(server, "src", "features", name))) fail(`slice already exists: ${name}`)
@@ -27,6 +24,7 @@ export const slice = async (input: {
   }
   const wired = wireSlice({
     name,
+    io,
     sources: {
       api: readText(paths.api) ?? "",
       runtime: readText(paths.runtime) ?? "",
@@ -35,7 +33,7 @@ export const slice = async (input: {
   })
   if (!wired.ok) return fail(wired.error)
 
-  const files = sliceFiles({ name, door: input.args.includes("--door") })
+  const files = sliceFiles({ name, door, io })
   for (const [rel, content] of Object.entries(files)) {
     const path = join(server, rel)
     await mkdir(dirname(path), { recursive: true })
@@ -57,12 +55,5 @@ export const slice = async (input: {
     cwd: input.root,
   })
 
-  console.error(`
-next steps:
-  1. add a migration in apps/server/migrations/ if ${name} stores data
-  2. write the pure logic in ${name}.core.ts and its test
-  3. replace the stub in ${name}.io.ts (deps.db is the SQL port)
-  4. register new error tags in platform/http.ts
-  5. make smoke/${name}.smoke.test.ts check the real behaviour
-  6. bun run check && bun run smoke`)
+  console.error(`\n${nextSteps({ name, io })}`)
 }

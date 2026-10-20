@@ -6,6 +6,7 @@
 import { posix } from "node:path"
 import { extractCanon } from "./canon.core"
 import { releaseSpec } from "./new.core"
+import { pascalCase } from "./slice.core"
 
 export const HARNESS_PACKAGE = "@pierre-mike/axioms"
 export const HARNESS_BIOME = `${HARNESS_PACKAGE}/biome`
@@ -465,8 +466,19 @@ const checkAllowlist = (input: DoctorInput): Finding[] =>
     .map((tag) => ({
       rule: "errors",
       problem: `STATUS_BY_TAG allowlists "${tag}", but no feature code defines it`,
-      remedy: `remove ${tag} from platform/http.ts`,
+      remedy: `remove ${tag} from platform/http.ts${stubTagOrigin({ tag, featureNames: input.featureNames })}`,
     }))
+
+/** `axioms slice <name>` registers `Invalid<Name>Id` for its stub core; say so once it is orphaned. */
+const stubTagOrigin = (input: {
+  readonly tag: string
+  readonly featureNames: ReadonlyArray<string>
+}): string => {
+  const slice = input.featureNames.find((name) => input.tag === `Invalid${pascalCase(name)}Id`)
+  return slice === undefined
+    ? ""
+    : `: \`axioms slice ${slice}\` added it for the stub core, which no longer uses it`
+}
 
 /** The canon and the generated code are written for this Effect major (Result, Context.Service). */
 export const EFFECT_MAJOR = 4

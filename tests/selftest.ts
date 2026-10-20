@@ -4,7 +4,7 @@
  * again, then smoke-test the real worker. If this passes, `axioms new` hands out a project that is
  * green from its first commit, and `axioms slice` keeps it green.
  */
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { PKG_ROOT } from "../cli/shell"
@@ -22,15 +22,27 @@ const step = async (input: {
   readonly cwd: string
   /** The step passes when the command fails, e.g. a hook rejecting a bad commit. */
   readonly expectFailure?: boolean
+  /** Text the command's combined output must contain. */
+  readonly expectOutput?: ReadonlyArray<string>
 }) => {
   console.error(`\n━━ selftest: ${input.name} ━━`)
-  const code = await Bun.spawn(input.cmd, {
+  const capture = input.expectOutput !== undefined
+  const proc = Bun.spawn(input.cmd, {
     cwd: input.cwd,
     env: { ...process.env },
-    stdout: "inherit",
-    stderr: "inherit",
-  }).exited
-  if ((code !== 0) !== (input.expectFailure ?? false)) {
+    stdout: capture ? "pipe" : "inherit",
+    stderr: capture ? "pipe" : "inherit",
+  })
+  const output = capture
+    ? (
+        await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+      ).join("")
+    : ""
+  process.stderr.write(output)
+  const code = await proc.exited
+  const missing = (input.expectOutput ?? []).filter((text) => !output.includes(text))
+  if ((code !== 0) !== (input.expectFailure ?? false) || missing.length > 0) {
+    for (const text of missing) console.error(`✖ output does not mention: ${text}`)
     console.error(`✖ selftest failed at: ${input.name} (project kept at ${app})`)
     process.exit(1)
   }
@@ -74,6 +86,35 @@ await Bun.write(
 )
 await step({ name: "notes accepts the rewritten note", cmd: ["bun", cli, "notes"], cwd: app })
 rmSync(join(app, ".agents", "notes", "implemented"), { recursive: true })
+// A slice that owns no data gets no io file and leaves runtime.ts alone.
+await step({ name: "slice --no-io", cmd: ["bun", cli, "slice", "search", "--no-io"], cwd: app })
+await step({
+  name: "slice --no-io leaves runtime.ts unchanged",
+  cmd: ["git", "diff", "--exit-code", "--", "apps/server/src/platform/runtime.ts"],
+  cwd: app,
+})
+// Replace the stub core with a real one that fails with its own tag. The stub's InvalidSearchId
+// is now orphaned in http.ts: doctor must name it and the slice that left it.
+const searchDir = join(app, "apps", "server", "src", "features", "search")
+for (const file of readdirSync(searchDir)) {
+  const path = join(searchDir, file)
+  await Bun.write(
+    path,
+    (await Bun.file(path).text()).replaceAll("InvalidSearchId", "InvalidSearchQuery"),
+  )
+}
+await step({
+  name: "doctor names the stub tag a replaced core left behind",
+  cmd: ["bun", cli, "doctor"],
+  cwd: app,
+  expectFailure: true,
+  expectOutput: ["InvalidSearchId", "`axioms slice search`"],
+})
+const httpPath = join(app, "apps", "server", "src", "platform", "http.ts")
+await Bun.write(
+  httpPath,
+  (await Bun.file(httpPath).text()).replace("InvalidSearchId: 400", "InvalidSearchQuery: 400"),
+)
 await step({ name: "slice", cmd: ["bun", cli, "slice", "widgets"], cwd: app })
 // Point the stub io at a real table: the generated route test (id "abc" answers 200) now passes
 // only if testApp() applied the migration, and the smoke test only if wrangler's D1 did.
