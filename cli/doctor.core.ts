@@ -639,3 +639,111 @@ const checkDeploy = (input: {
       ]
   return [...gate, ...triggerFinding({ events: triggers(workflow), mode: input.mode })]
 }
+
+/** Every string a parsed workflow holds, depth first, in document order. */
+const allStrings = (value: unknown): string[] => {
+  if (typeof value === "string") return [value]
+  if (Array.isArray(value)) return value.flatMap(allStrings)
+  return isRecord(value) ? Object.values(value).flatMap(allStrings) : []
+}
+
+/** `GITHUB_TOKEN` is provided by Actions on every run; nobody sets it. */
+const SECRET_REF = /\$\{\{\s*secrets\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g
+
+/** The secrets deploy.yml reads (`${{ secrets.NAME }}`), so the doctor checks what it uses. */
+export const deploySecretNames = (workflow: unknown): string[] => [
+  ...new Set(
+    allStrings(workflow)
+      .flatMap((text) => [...text.matchAll(SECRET_REF)].map((match) => match[1] ?? ""))
+      .filter((name) => name !== "" && name !== "GITHUB_TOKEN"),
+  ),
+]
+
+/** The environments deploy.yml's jobs run in (`environment: x` or `environment: { name: x }`). */
+export const deployEnvironments = (workflow: unknown): string[] => {
+  const jobs = field({ value: workflow, key: "jobs" })
+  const names = (isRecord(jobs) ? Object.values(jobs) : []).map((job) => {
+    const env = field({ value: job, key: "environment" })
+    return typeof env === "string" ? env : field({ value: env, key: "name" })
+  })
+  return [...new Set(names.filter((n): n is string => typeof n === "string" && !n.includes("${{")))]
+}
+
+/** What the shell could read of the repo's secret names through `gh secret list`, or why not. */
+export type SecretsState =
+  | { readonly kind: "unavailable"; readonly reason: string }
+  | {
+      readonly kind: "live"
+      readonly repository: ReadonlyArray<string>
+      /** `secrets` is `null` for an environment GitHub does not have yet (it 404s until created). */
+      readonly environments: ReadonlyArray<{
+        readonly name: string
+        readonly secrets: ReadonlyArray<string> | null
+      }>
+    }
+
+/** Advice the doctor prints without failing: warnings, and what it could not verify. */
+export interface Advisory {
+  readonly warnings: ReadonlyArray<Finding>
+  readonly unverified: ReadonlyArray<string>
+}
+
+/**
+ * A missing deploy secret warns and never fails: a new project has none until its first deploy,
+ * and the doctor runs in every `check`, pre-commit hook and CI run. Unreadable secrets (no remote,
+ * no gh, no permission) are reported as not verified, as the branch-protection check does.
+ */
+export const checkDeploySecrets = (input: {
+  readonly required: ReadonlyArray<string>
+  readonly state: SecretsState
+}): Advisory => {
+  if (input.required.length === 0) return { warnings: [], unverified: [] }
+  const state = input.state
+  if (state.kind === "unavailable") {
+    return {
+      warnings: [],
+      unverified: [`– [secrets] ${input.required.join(", ")} not verified: ${state.reason}`],
+    }
+  }
+  const present = new Set([
+    ...state.repository,
+    ...state.environments.flatMap((env) => env.secrets ?? []),
+  ])
+  const where = [
+    "a repository secret",
+    ...state.environments.map((env) => `a secret of environment ${env.name}`),
+  ].join(" or ")
+  return {
+    warnings: input.required
+      .filter((name) => !present.has(name))
+      .map((name) => ({
+        rule: "secrets",
+        problem: `${name} is not ${where}, so \`axioms deploy\` in deploy.yml cannot authenticate`,
+        remedy: `gh secret set ${name}`,
+      })),
+    unverified: [],
+  }
+}
+
+/** `axioms doctor --json`: failures fail the doctor; warnings and unverified checks never do. */
+export const doctorReport = (
+  input: { readonly failures: ReadonlyArray<Finding> } & Advisory,
+): { readonly pass: boolean; readonly failures: ReadonlyArray<Finding> } & Advisory => ({
+  pass: input.failures.length === 0,
+  failures: input.failures,
+  warnings: input.warnings,
+  unverified: input.unverified,
+})
+
+export const DOCTOR_USAGE = "usage: axioms doctor [--json]"
+
+export const parseDoctorArgs = (
+  args: ReadonlyArray<string>,
+):
+  | { readonly ok: true; readonly json: boolean }
+  | { readonly ok: false; readonly error: string } => {
+  const unknown = args.find((arg) => arg !== "--json")
+  return unknown === undefined
+    ? { ok: true, json: args.length > 0 }
+    : { ok: false, error: `unexpected argument ${unknown}\n${DOCTOR_USAGE}` }
+}

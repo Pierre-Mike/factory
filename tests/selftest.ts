@@ -67,7 +67,14 @@ await step({
 })
 await step({ name: "check (fresh)", cmd: ["bun", cli, "check"], cwd: app })
 
-// deploy.yml is a gate: doctor fails without it and sync puts the template's back.
+// deploy.yml is a gate: doctor fails without it and sync puts the template's back. The project
+// has no GitHub remote, so the deploy secrets are reported as not verified, never as a failure.
+await step({
+  name: "doctor --json passes and says the deploy secrets were not verified",
+  cmd: ["bun", cli, "doctor", "--json"],
+  cwd: app,
+  expectOutput: ['"pass": true', "CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID not verified"],
+})
 rmSync(join(app, ".github", "workflows", "deploy.yml"))
 await step({
   name: "doctor fails without deploy.yml",

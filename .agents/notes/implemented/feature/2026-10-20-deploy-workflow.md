@@ -67,7 +67,8 @@ replay it, and the doctor would have to tell a deploy that may be skipped from o
 ## Consequences
 
 - Every new app project deploys on its first push to main, and fails there until the two secrets
-  exist. `axioms new` prints the `gh secret set` commands.
+  exist. `axioms new` prints the `gh secret set` commands, and the doctor warns about missing
+  secrets (see [the deploy secrets note](2026-10-20-deploy-secrets-warning.md)).
 - Projects created before this release fail doctor with "deploy.yml is missing" after upgrading;
   `bunx axioms sync` fixes it. small-tools already has a deploy.yml that passes.
 - Doctor reads one more file and the selftest generates a second project (`--deploy manual

@@ -5,14 +5,19 @@ import { liteCiWorkflow } from "./adopt.core"
 import { writeCanon } from "./canon.core"
 import {
   BIOME_FILE_INCLUDES,
+  checkDeploySecrets,
   DEPLOY_WORKFLOW,
   type DoctorInput,
+  deployEnvironments,
+  deploySecretNames,
+  doctorReport,
   HARNESS_BIOME,
   HARNESS_LEFTHOOK,
   HARNESS_PACKAGE,
   HARNESS_TSCONFIG,
   harnessProfile,
   parseAllowlistedTags,
+  parseDoctorArgs,
   runDoctor,
   TSCONFIG_BASE,
 } from "./doctor.core"
@@ -652,5 +657,103 @@ describe("renderDeployWorkflow", () => {
       renderDeployWorkflow({ template: DEPLOY_TEMPLATE, mode: "manual" }),
     )
     expect(Object.keys((manual as { on: object }).on)).toEqual(["workflow_dispatch"])
+  })
+})
+
+describe("deploy secrets", () => {
+  const workflow = Bun.YAML.parse(DEPLOY_TEMPLATE)
+  const required = deploySecretNames(workflow)
+  const live = (input: {
+    readonly repository: ReadonlyArray<string>
+    readonly production?: ReadonlyArray<string> | null
+  }) =>
+    checkDeploySecrets({
+      required,
+      state: {
+        kind: "live",
+        repository: input.repository,
+        environments: [{ name: "production", secrets: input.production ?? null }],
+      },
+    })
+  /** The doctor's verdict with these warnings on top of a healthy project. */
+  const verdict = (advisory: ReturnType<typeof checkDeploySecrets>) =>
+    doctorReport({ failures: runDoctor(healthy), ...advisory })
+
+  it("reads the secret names and environments from deploy.yml", () => {
+    expect(required).toEqual(["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"])
+    expect(deployEnvironments(workflow)).toEqual(["production"])
+    expect(deployEnvironments({ jobs: { a: { environment: "staging" }, b: {} } })).toEqual([
+      "staging",
+    ])
+    expect(
+      deploySecretNames({ jobs: { a: { env: { T: "${{ secrets.GITHUB_TOKEN }}" } } } }),
+    ).toEqual([])
+  })
+
+  it("passes silently when both secrets exist, at repository or environment level", () => {
+    const both = live({
+      repository: ["CLOUDFLARE_API_TOKEN"],
+      production: ["CLOUDFLARE_ACCOUNT_ID"],
+    })
+    expect(both).toEqual({ warnings: [], unverified: [] })
+    expect(verdict(both)).toEqual({ pass: true, failures: [], warnings: [], unverified: [] })
+  })
+
+  it("warns, naming the fix, when one secret is missing", () => {
+    const one = live({ repository: ["CLOUDFLARE_ACCOUNT_ID"], production: [] })
+    expect(one.warnings).toEqual([
+      {
+        rule: "secrets",
+        problem:
+          "CLOUDFLARE_API_TOKEN is not a repository secret or a secret of environment production, so `axioms deploy` in deploy.yml cannot authenticate",
+        remedy: "gh secret set CLOUDFLARE_API_TOKEN",
+      },
+    ])
+    expect(verdict(one).pass).toBe(true)
+  })
+
+  it("warns once per secret when both are missing", () => {
+    const none = live({ repository: [] })
+    expect(none.warnings.map((w) => w.remedy)).toEqual([
+      "gh secret set CLOUDFLARE_API_TOKEN",
+      "gh secret set CLOUDFLARE_ACCOUNT_ID",
+    ])
+    const report = verdict(none)
+    expect(report.pass).toBe(true)
+    expect(report.failures).toEqual([])
+    expect(report.warnings).toHaveLength(2)
+  })
+
+  it("says what it could not verify and why when the secrets are unreadable", () => {
+    const unreadable = checkDeploySecrets({
+      required,
+      state: { kind: "unavailable", reason: "no git remotes found" },
+    })
+    expect(unreadable).toEqual({
+      warnings: [],
+      unverified: [
+        "– [secrets] CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID not verified: no git remotes found",
+      ],
+    })
+    expect(verdict(unreadable).pass).toBe(true)
+  })
+
+  it("has nothing to verify when deploy.yml names no secret", () => {
+    expect(
+      checkDeploySecrets({ required: [], state: { kind: "unavailable", reason: "x" } }),
+    ).toEqual({ warnings: [], unverified: [] })
+  })
+
+  it("fails the report only on failures, never on warnings", () => {
+    const failure = { rule: "ci", problem: "p", remedy: "r" }
+    expect(doctorReport({ failures: [failure], warnings: [], unverified: [] }).pass).toBe(false)
+  })
+})
+
+describe("parseDoctorArgs", () => {
+  it("takes --json and refuses anything else", () => {
+    expect(parseDoctorArgs([])).toEqual({ ok: true, json: false })
+    expect(parseDoctorArgs(["--json"])).toEqual({ ok: true, json: true })
+    expect(parseDoctorArgs(["--jsn"]).ok).toBe(false)
   })
 })

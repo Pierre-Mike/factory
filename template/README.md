@@ -19,7 +19,7 @@ cd ../.. && bun run deploy
 
 After that, `.github/workflows/deploy.yml` deploys every push to `main` (or, with
 `"axioms": { "deploy": "manual" }` in package.json, only when you run `gh workflow run deploy`).
-It needs two secrets on GitHub:
+It needs two secrets on GitHub; `bunx axioms doctor` warns until both exist:
 
 ```bash
 gh secret set CLOUDFLARE_API_TOKEN

@@ -126,7 +126,7 @@ A separate `.github/workflows/deploy.yml` runs `bunx axioms deploy` on every pus
 `axioms new --deploy manual` (or `"axioms": { "deploy": "manual" }` in package.json) makes it run
 only when started by hand. It is not in ci.yml because `axioms ci-dry-run` replays every ci.yml
 job. Doctor fails when deploy.yml is missing, does not run `axioms deploy`, or lets that step be
-skipped or fail.
+skipped or fail, and warns when either secret is missing on GitHub.
 
 `axioms baseline` counts the checks Biome, the tests and the notes gate report and compares them to
 `gate-baseline.json`. A drop fails. After adding checks on purpose, run `axioms baseline --update`
