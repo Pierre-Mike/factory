@@ -76,20 +76,30 @@ describe("build${P}", () => {
 })
 `,
     [`src/features/${name}/${name}.io.ts`]: `/**
- * I/O port for the \`${name}\` slice. Replace the stub with real I/O (deps.db is the D1-backed
- * SQL port). Routes depend only on the Tag.
+ * I/O port for the \`${name}\` slice. Routes depend only on the Tag. deps.db is the SQL port: D1 in
+ * the worker, in-memory SQLite with the real migrations in tests.
  */
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import type { AppDeps } from "../../platform/deps"
+
+// The stub needs no table. Replace it with a query against your migration.
+const FIND_BY_ID = "SELECT ? AS id"
+
+const ${P}Row = Schema.Struct({ id: Schema.String })
 
 export class ${P}Io extends Context.Service<
   ${P}Io,
   { readonly findById: (id: string) => Effect.Effect<{ readonly id: string }> }
 >()("${P}Io") {}
 
-export const ${P}IoLive = (_deps: AppDeps): Layer.Layer<${P}Io> =>
+export const ${P}IoLive = (deps: AppDeps): Layer.Layer<${P}Io> =>
   Layer.succeed(${P}Io, {
-    findById: (id) => Effect.succeed({ id }),
+    // A row that fails to decode is a defect: the boundary logs it and answers a redacted 500.
+    findById: (id) =>
+      Effect.promise(() => deps.db.first({ sql: FIND_BY_ID, params: [id] })).pipe(
+        Effect.flatMap((row) => Schema.decodeUnknownEffect(${P}Row)(row)),
+        Effect.orDie,
+      ),
   })
 `,
     [`src/features/${name}/${name}.routes.ts`]: `/**
@@ -116,25 +126,23 @@ export const build${P}App = (runtime: RouteRuntime<${P}Io>) =>
     }),
   )
 `,
-    [`src/features/${name}/${name}.routes.test.ts`]: `import { describe, expect, it } from "bun:test"
+    [`src/features/${name}/${name}.routes.test.ts`]: `/** The route through the real app, over in-memory SQLite with every migration applied. */
+import { describe, expect, it } from "bun:test"
 import { decodeApiErrorBody } from "@app/shared"
-import { Effect, Layer, ManagedRuntime } from "effect"
-import { ${P}Io } from "./${name}.io"
-import { build${P}App } from "./${name}.routes"
+import { testApp } from "../../platform/test-app.bun"
 
-const app = build${P}App(
-  ManagedRuntime.make(Layer.succeed(${P}Io, { findById: (id) => Effect.succeed({ id }) })),
-)
+// One database for the file. Call testApp() inside a test that writes rows, to start clean.
+const { request } = testApp()
 
-describe("GET /${name}", () => {
+describe("GET /api/${name}", () => {
   it("returns the payload for a valid id", async () => {
-    const res = await app.request("/?id=abc")
+    const res = await request("/api/${name}?id=abc")
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ id: "abc", message: "${name} works" })
   })
 
   it("maps a missing id to the shared 400 error envelope", async () => {
-    const res = await app.request("/")
+    const res = await request("/api/${name}")
     expect(res.status).toBe(400)
     expect(decodeApiErrorBody(await res.json()).error._tag).toBe("Invalid${P}Id")
   })

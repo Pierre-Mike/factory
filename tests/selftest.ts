@@ -75,6 +75,19 @@ await Bun.write(
 await step({ name: "notes accepts the rewritten note", cmd: ["bun", cli, "notes"], cwd: app })
 rmSync(join(app, ".agents", "notes", "implemented"), { recursive: true })
 await step({ name: "slice", cmd: ["bun", cli, "slice", "widgets"], cwd: app })
+// Point the stub io at a real table: the generated route test (id "abc" answers 200) now passes
+// only if testApp() applied the migration, and the smoke test only if wrangler's D1 did.
+await Bun.write(
+  join(app, "apps", "server", "migrations", "0001_widgets.sql"),
+  "CREATE TABLE widgets (id TEXT PRIMARY KEY);\nINSERT INTO widgets (id) VALUES ('abc');\n",
+)
+const widgetsIo = join(app, "apps", "server", "src", "features", "widgets", "widgets.io.ts")
+const stubIo = await Bun.file(widgetsIo).text()
+if (!stubIo.includes('FIND_BY_ID = "SELECT ? AS id"')) {
+  console.error(`✖ selftest: widgets.io.ts has no stub query to replace (project kept at ${app})`)
+  process.exit(1)
+}
+await Bun.write(widgetsIo, stubIo.replace("SELECT ? AS id", "SELECT id FROM widgets WHERE id = ?"))
 await step({ name: "check (with slice)", cmd: ["bun", cli, "check"], cwd: app })
 await step({ name: "smoke", cmd: ["bun", cli, "smoke"], cwd: app })
 await step({ name: "deploy dry run", cmd: ["bun", cli, "deploy", "--dry-run"], cwd: app })

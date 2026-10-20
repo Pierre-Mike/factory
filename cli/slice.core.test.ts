@@ -61,6 +61,22 @@ describe("sliceFiles", () => {
       "src/features/items/items.door.ts",
     )
   })
+
+  it("runs the route test over the shared in-memory SQLite app, not a stubbed service", () => {
+    const test = sliceFiles({ name: "items", door: false })[
+      "src/features/items/items.routes.test.ts"
+    ]
+    expect(test).toContain('import { testApp } from "../../platform/test-app.bun"')
+    expect(test).toContain('request("/api/items?id=abc")')
+    expect(test).not.toContain("Layer.succeed")
+    expect(test).not.toContain("ManagedRuntime")
+  })
+
+  it("reads the stub io through the SQL port and decodes the row with a Schema", () => {
+    const io = sliceFiles({ name: "items", door: false })["src/features/items/items.io.ts"]
+    expect(io).toContain("deps.db.first(")
+    expect(io).toContain("Schema.decodeUnknownEffect(ItemsRow)")
+  })
 })
 
 describe("mountRoute", () => {

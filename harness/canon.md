@@ -10,9 +10,9 @@ apps/server/
       <feature>.core.test.ts   # co-located unit test (data in, data out)
       <feature>.io.ts          # I/O as an Effect service (Context.Service + Layer)
       <feature>.routes.ts      # Hono shell: impure read, pure core, respond
-      <feature>.routes.test.ts # the route over an in-memory SQLite database
+      <feature>.routes.test.ts # the route via testApp(): the real app over in-memory SQLite
       <feature>.door.ts        # opt-in: the only file other slices may import
-    platform/                  # runtime, typed config, HTTP errors, the SQL port
+    platform/                  # runtime, typed config, HTTP errors, the SQL port, testApp()
     api.ts                     # mounts every slice under /api, exports AppType
     worker.ts                  # composition root (Cloudflare Workers entry)
   migrations/                  # D1 migrations; tests run against the same files
