@@ -29,3 +29,7 @@ pre-push:
     # lockfile, wrangler config, migrations). Other pushes skip it in well under a second.
     - name: ci-dry-run
       run: bunx axioms ci-dry-run
+    # The saved browser tests (apps/web/e2e) against the built app on a throwaway wrangler dev.
+    # `axioms doctor` fails when this job is gone or a project's lefthook.yml skips it.
+    - name: e2e
+      run: bunx axioms e2e

@@ -1,6 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "entry": ["src/worker.ts", "src/main.tsx", "src/index.ts", "**/*.test.ts", "vite.config.ts"],
+  "entry": [
+    "src/worker.ts",
+    "src/main.tsx",
+    "src/index.ts",
+    "**/*.test.ts",
+    "**/*.e2e.ts",
+    "vite.config.ts"
+  ],
   "workspaces": { "packages": ["apps/*", "shared"] },
   "duplicates": { "minOccurrences": 3 },
   "rules": {}

@@ -31,6 +31,7 @@
         "required_status_checks": [
           { "context": "check" },
           { "context": "smoke" },
+          { "context": "e2e" },
           { "context": "deploy-dry-run" },
           { "context": "pr-body" },
           { "context": "workflow-lint" },

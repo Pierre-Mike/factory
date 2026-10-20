@@ -288,6 +288,7 @@
       "includes": [
         "**/scripts/**",
         "**/smoke/**",
+        "**/e2e/**",
         "**/*.config.ts",
         "**/worker-configuration.d.ts",
         "!**/src/**"

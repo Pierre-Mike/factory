@@ -29,6 +29,8 @@ export interface DoctorInput {
   readonly biome: unknown
   /** The parsed lefthook.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
   readonly lefthook: unknown
+  /** The parsed harness/lefthook.yml the project extends (`null` when missing). */
+  readonly harnessLefthook: unknown
   readonly agentsMd: string | null
   readonly claudeMd: string | null
   /** harness/notes.md, and the project's copy at .agents/notes/README.md (`null` when missing). */
@@ -176,6 +178,48 @@ const checkLefthook = (lefthook: unknown): Finding[] => {
         ? "lefthook.yml is not valid YAML"
         : `lefthook.yml does not extend ${HARNESS_LEFTHOOK}`
   return [{ rule: "hooks", problem, remedy: "run `bunx axioms sync`" }]
+}
+
+/**
+ * Jobs the harness pre-push hook must run, and that a project's lefthook.yml may not skip or
+ * redefine. Merged by name, a local `pre-push` job called `e2e` would replace the harness one.
+ */
+const PRE_PUSH_GATES = ["e2e"]
+
+const hookJobs = (input: { readonly config: unknown; readonly hook: string }) => {
+  const jobs = field({ value: field({ value: input.config, key: input.hook }), key: "jobs" })
+  return Array.isArray(jobs) ? jobs.filter(isRecord) : []
+}
+
+const checkPrePush = (input: DoctorInput): Finding[] => {
+  const harnessJobs = hookJobs({ config: input.harnessLefthook, hook: "pre-push" })
+  const missing = PRE_PUSH_GATES.filter(
+    (gate) =>
+      !harnessJobs.some(
+        (job) =>
+          job.skip === undefined &&
+          job.only === undefined &&
+          typeof job.run === "string" &&
+          runsGate({ run: job.run, gate }),
+      ),
+  ).map((gate) => ({
+    rule: "hooks",
+    problem: `the harness pre-push hook never runs \`axioms ${gate}\``,
+    remedy: `restore the \`${gate}\` job in harness/lefthook.yml in the factory, then reinstall the harness`,
+  }))
+  const local = field({ value: input.lefthook, key: "pre-push" })
+  const commands = field({ value: local, key: "commands" })
+  const skipped = (field({ value: local, key: "skip" }) ?? false) !== false
+  const redefined = PRE_PUSH_GATES.filter(
+    (gate) =>
+      hookJobs({ config: input.lefthook, hook: "pre-push" }).some((job) => job.name === gate) ||
+      field({ value: commands, key: gate }) !== undefined,
+  )
+  const overrides = [
+    ...(skipped ? ["lefthook.yml skips the pre-push hook"] : []),
+    ...redefined.map((gate) => `lefthook.yml redefines the pre-push \`${gate}\` job`),
+  ].map((problem) => ({ rule: "hooks", problem, remedy: "run `bunx axioms sync`" }))
+  return [...missing, ...overrides]
 }
 
 const checkAgentDocs = (input: DoctorInput): Finding[] => {
@@ -373,11 +417,12 @@ const checkTsconfigs = (
   })
 
 /**
- * The gates CI must run as must-pass steps. A lite repo has no worker to smoke or deploy, but the
- * secret scan and the PR body contract are not app-shaped: `axioms adopt` stamps both jobs.
+ * The gates CI must run as must-pass steps. A lite repo has no worker to smoke, deploy or open in a
+ * browser (e2e), but the secret scan and the PR body contract are not app-shaped: `axioms adopt`
+ * stamps both jobs.
  */
 const CI_GATES: Record<HarnessProfile, ReadonlyArray<string>> = {
-  app: ["check", "smoke", "deploy --dry-run", "lint-workflows", "secret-scan", "pr-body"],
+  app: ["check", "smoke", "deploy --dry-run", "lint-workflows", "secret-scan", "pr-body", "e2e"],
   lite: ["check", "secret-scan", "pr-body"],
 }
 const PINNED_USES = /^([^\s@]+@[0-9a-f]{40}|\.\/.*)$/
@@ -522,6 +567,7 @@ export const runDoctor = (input: DoctorInput): Finding[] => {
   return [
     ...checkBiome({ biome: input.biome, nestedConfigs: input.nestedBiomeConfigs }),
     ...checkLefthook(input.lefthook),
+    ...checkPrePush(input),
     ...checkAgentDocs(input),
     ...checkClaudeConfig(input),
     ...checkPackage(input),

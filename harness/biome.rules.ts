@@ -124,6 +124,7 @@ const APP_CODE = "**/src/**"
 const TOOLING = [
   "**/scripts/**",
   "**/smoke/**",
+  "**/e2e/**",
   "**/*.config.ts",
   "**/worker-configuration.d.ts",
   `!${APP_CODE}`,

@@ -13,6 +13,7 @@ import { deploy } from "./commands/deploy"
 import { dev } from "./commands/dev"
 import { doctor } from "./commands/doctor"
 import { ciDryRun } from "./commands/dryrun"
+import { e2e } from "./commands/e2e"
 import type { GateRun } from "./commands/gates"
 import { newProject } from "./commands/new"
 import { notes } from "./commands/notes"
@@ -48,6 +49,9 @@ const HELP = `axioms ${harnessVersion()}
   axioms smoke [--json] [--report <path>]
                                         run smoke/ against a local wrangler dev
                                         (--json: one JSON evidence document on stdout; --report: the same to a file)
+  axioms e2e [--json] [--report <path>]
+                                        build the web app, run apps/web/e2e/*.e2e.ts in headless chromium
+                                        against a throwaway wrangler dev, always stop the server
   axioms deploy [--dry-run]             bundle + migrate locally; without --dry-run, deploy for real
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
@@ -65,7 +69,7 @@ const root = projectRoot(process.cwd())
 
 const exit = (ok: boolean) => process.exit(ok ? 0 : 1)
 
-/** check and smoke: run the gates, honor `--json` / `--report <path>`, exit with the verdict. */
+/** check, smoke and e2e: run the gates, honor `--json` / `--report <path>`, exit with the verdict. */
 const gatedReport = async (input: {
   readonly command: string
   readonly args: ReadonlyArray<string>
@@ -104,6 +108,9 @@ switch (command) {
   }
   case "smoke":
     await gatedReport({ command: "smoke", args, gather: (collect) => smoke({ root, collect }) })
+    break
+  case "e2e":
+    await gatedReport({ command: "e2e", args, gather: (collect) => e2e({ root, collect }) })
     break
   case "deploy": {
     const parsed = parseDeployArgs(args)

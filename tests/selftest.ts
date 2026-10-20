@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 /**
- * End-to-end test of the factory: generate a project, run every gate, add a slice, run every gate
- * again, then smoke-test the real worker and run two `axioms dev` servers side by side. If this
- * passes, `axioms new` hands out a project that is green from its first commit, and
- * `axioms slice` keeps it green.
+ * End-to-end test of the factory: generate a project, run every gate and the browser tests, add a
+ * slice, run every gate again, then smoke-test the real worker and run two `axioms dev` servers
+ * side by side. If this passes, `axioms new` hands out a project that is green from its first
+ * commit, and `axioms slice` keeps it green.
  */
 import { mkdtempSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -68,6 +68,70 @@ await step({
   cwd: app,
 })
 await step({ name: "check (fresh)", cmd: ["bun", cli, "check"], cwd: app })
+
+/** Like `step`, and every process the command started (wrangler, workerd) must be gone after it. */
+const watchedStep = async (input: {
+  readonly name: string
+  readonly cmd: string[]
+  readonly cwd: string
+  readonly expectFailure?: boolean
+}) => {
+  console.error(`\n━━ selftest: ${input.name} ━━`)
+  const proc = Bun.spawn(input.cmd, { cwd: input.cwd, stdout: "inherit", stderr: "inherit" })
+  const tree = watchTree(proc.pid)
+  const code = await proc.exited
+  const left = await survivors(await tree.stop())
+  const problems = [
+    (code !== 0) !== (input.expectFailure ?? false) ? `exit code ${code}` : null,
+    left === "" ? null : `processes still running:\n${left}`,
+  ].filter((problem) => problem !== null)
+  if (problems.length > 0) {
+    console.error(
+      `✖ selftest failed at: ${input.name} (${problems.join("; ")}) (project kept at ${app})`,
+    )
+    process.exit(1)
+  }
+}
+
+// The browser tests (issue #13): the template's health page test passes on a fresh project, a
+// failing test fails the run, and neither run leaves wrangler or workerd behind.
+await watchedStep({ name: "e2e (fresh)", cmd: ["bun", cli, "e2e"], cwd: app })
+const brokenE2e = join(app, "apps", "web", "e2e", "broken.e2e.ts")
+await Bun.write(
+  brokenE2e,
+  'import { expect, it } from "bun:test"\n\nit("fails on purpose", () => {\n  expect(1).toBe(2)\n})\n',
+)
+await watchedStep({
+  name: "e2e fails on a failing test and still stops the server",
+  cmd: ["bun", cli, "e2e"],
+  cwd: app,
+  expectFailure: true,
+})
+rmSync(brokenE2e)
+
+// Dropping the e2e gate from CI, or skipping it in the pre-push hook, is drift doctor names.
+const ciFile = join(app, ".github", "workflows", "ci.yml")
+const ciText = await Bun.file(ciFile).text()
+await Bun.write(ciFile, ciText.replace("      - run: bunx axioms e2e\n", ""))
+await step({
+  name: "doctor fails when CI drops the e2e job",
+  cmd: ["bun", cli, "doctor"],
+  cwd: app,
+  expectFailure: true,
+  expectOutput: ["ci.yml never runs `axioms e2e`"],
+})
+await Bun.write(ciFile, ciText)
+const hooksFile = join(app, "lefthook.yml")
+const hooksText = await Bun.file(hooksFile).text()
+await Bun.write(hooksFile, `${hooksText}pre-push:\n  jobs:\n    - name: e2e\n      skip: true\n`)
+await step({
+  name: "doctor fails when lefthook.yml skips the pre-push e2e job",
+  cmd: ["bun", cli, "doctor"],
+  cwd: app,
+  expectFailure: true,
+  expectOutput: ["lefthook.yml redefines the pre-push `e2e` job"],
+})
+await Bun.write(hooksFile, hooksText)
 
 // A formatting-only change: check names the file and the fix command, never Biome's diff (issue
 // #10). The lint section must stay a few lines; Biome's diff of this one file is 62 lines (29 KB
@@ -275,5 +339,5 @@ await step({
 
 rmSync(workdir, { recursive: true, force: true })
 console.error(
-  "\n✓ selftest: new, check, slice, check, smoke, secret scan, deploy dry run and CI dry run all behaved",
+  "\n✓ selftest: new, check, e2e, slice, check, smoke, dev, secret scan, deploy dry run and CI dry run all behaved",
 )

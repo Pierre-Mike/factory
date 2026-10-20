@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { liteCiWorkflow } from "./adopt.core"
 import { writeCanon } from "./canon.core"
 import {
@@ -31,9 +33,15 @@ const HEALTHY_JOBS = {
       { run: "bunx axioms lint-workflows" },
       { run: "bunx axioms secret-scan" },
       { run: "bunx axioms pr-body" },
+      { run: "bunx axioms e2e" },
     ],
   },
 }
+
+/** The hook config the harness ships, so these tests also pin what harness/lefthook.yml runs. */
+const HARNESS_HOOKS: unknown = Bun.YAML.parse(
+  readFileSync(join(import.meta.dir, "..", "harness", "lefthook.yml"), "utf8"),
+)
 
 const HTTP_SOURCE = `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
   InvalidVerboseFlag: 400,
@@ -43,6 +51,7 @@ const healthy: DoctorInput = {
   canon: "the rules",
   biome: { extends: [HARNESS_BIOME], files: { includes: [...BIOME_FILE_INCLUDES] } },
   lefthook: { extends: [HARNESS_LEFTHOOK] },
+  harnessLefthook: HARNESS_HOOKS,
   agentsMd: writeCanon({ agentsMd: "# App", canon: "the rules" }),
   claudeMd: "@AGENTS.md\n",
   notesRules: "# Agent Notes\n",
@@ -131,6 +140,33 @@ describe("runDoctor", () => {
       runDoctor({ ...healthy, lefthook }).map((finding) => finding.problem)
     expect(problems(null)).toEqual(["lefthook.yml is missing"])
     expect(problems(undefined)).toEqual(["lefthook.yml is not valid YAML"])
+  })
+
+  describe("pre-push e2e", () => {
+    const prePush = (jobs: unknown[]) => ({ "pre-push": { piped: true, jobs } })
+
+    it("flags a harness hook config whose pre-push never runs axioms e2e", () => {
+      const problems = (harnessLefthook: unknown) =>
+        runDoctor({ ...healthy, harnessLefthook }).map((finding) => finding.problem)
+      const expected = ["the harness pre-push hook never runs `axioms e2e`"]
+      expect(problems(prePush([{ name: "check", run: "bunx axioms check" }]))).toEqual(expected)
+      expect(problems(prePush([{ name: "e2e", run: "bunx axioms e2e", skip: true }]))).toEqual(
+        expected,
+      )
+      expect(problems(prePush([{ name: "e2e", run: "echo axioms e2e" }]))).toEqual(expected)
+      expect(problems(null)).toEqual(expected)
+      expect(problems(prePush([{ name: "e2e", run: "bunx axioms e2e" }]))).toEqual([])
+    })
+
+    it("flags a project lefthook.yml that skips or redefines the pre-push e2e job", () => {
+      const withLocal = (local: Record<string, unknown>) =>
+        rules({ ...healthy, lefthook: { extends: [HARNESS_LEFTHOOK], ...local } })
+      expect(withLocal({ "pre-push": { skip: true } })).toEqual(["hooks"])
+      expect(withLocal(prePush([{ name: "e2e", skip: true }]))).toEqual(["hooks"])
+      expect(withLocal(prePush([{ name: "e2e", run: "true" }]))).toEqual(["hooks"])
+      expect(withLocal({ "pre-push": { commands: { e2e: { skip: true } } } })).toEqual(["hooks"])
+      expect(withLocal(prePush([{ name: "typos", run: "typos" }]))).toEqual([])
+    })
   })
 
   it("flags a stale canon copy and a CLAUDE.md that does not import it", () => {
@@ -287,7 +323,7 @@ describe("runDoctor", () => {
           ...healthy,
           ciWorkflow: { jobs: { a: { steps: [{ run: "bunx axioms check" }] } } },
         }),
-      ).toEqual(["ci", "ci", "ci", "ci", "ci"])
+      ).toEqual(["ci", "ci", "ci", "ci", "ci", "ci"])
     })
 
     it("accepts the gate inside a multi-line run, with or without bunx", () => {
@@ -516,6 +552,14 @@ describe("lite profile (axioms adopt)", () => {
     }
     expect(rules(local)).toEqual(["package"])
     expect(rules({ ...local, allowLocalHarness: true })).toEqual([])
+  })
+
+  it("asks an app repo, but not a lite repo, for the e2e CI gate", () => {
+    const app = { ...lite, pkg: { ...litePkg, axioms: {} } }
+    expect(runDoctor(app).map((f) => f.problem)).toContain(
+      "ci.yml never runs `axioms e2e` as a step that must pass",
+    )
+    expect(runDoctor(lite)).toEqual([])
   })
 
   it("asks an app repo, but not a lite repo, for the smoke and deploy CI gates", () => {

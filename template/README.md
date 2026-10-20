@@ -8,6 +8,7 @@ bun run dev      # http://localhost:5173
 bun run dev --port 0 --persist-to .wrangler/mine   # a free port and its own D1 state
 bun run check    # every gate
 bun run smoke    # the real worker, over HTTP
+bun run e2e      # the browser tests in apps/web/e2e, in headless chromium
 ```
 
 First deploy:

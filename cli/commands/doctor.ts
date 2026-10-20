@@ -116,6 +116,7 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     canon: readText(join(HARNESS_DIR, "canon.md")) ?? "",
     biome: readJson(join(root, "biome.json")),
     lefthook: readYaml(join(root, "lefthook.yml")),
+    harnessLefthook: readYaml(join(HARNESS_DIR, "lefthook.yml")),
     agentsMd: readText(join(root, "AGENTS.md")),
     claudeMd: readText(join(root, "CLAUDE.md")),
     notesRules: readText(join(HARNESS_DIR, "notes.md")) ?? "",

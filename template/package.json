@@ -8,6 +8,7 @@
     "dev": "axioms dev",
     "check": "axioms check",
     "smoke": "axioms smoke",
+    "e2e": "axioms e2e",
     "slice": "axioms slice",
     "lint": "axioms biome check --write .",
     "deploy": "axioms deploy",
