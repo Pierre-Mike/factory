@@ -5,7 +5,7 @@
  */
 import { posix } from "node:path"
 import { extractCanon } from "./canon.core"
-import { releaseSpec } from "./new.core"
+import { type DeployMode, deployMode, releaseSpec } from "./new.core"
 import { pascalCase } from "./slice.core"
 
 export const HARNESS_PACKAGE = "@pierre-mike/axioms"
@@ -17,6 +17,8 @@ export const CLAUDE_SETTINGS = ".claude/settings.json"
 export const CLAUDE_SKILLS_DIR = ".claude/skills"
 /** The `id:` of the CI step v0.10.0 and v0.11.0 needed to fetch the then-private harness. */
 export const HARNESS_ACCESS_ID = "harness-access"
+/** The workflow that deploys main. It lives outside ci.yml, which `axioms ci-dry-run` replays. */
+export const DEPLOY_WORKFLOW = ".github/workflows/deploy.yml"
 
 export interface Finding {
   readonly rule: string
@@ -55,6 +57,8 @@ export interface DoctorInput {
   readonly nestedBiomeConfigs: ReadonlyArray<string>
   /** The parsed ci.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
   readonly ciWorkflow: unknown
+  /** The parsed deploy.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
+  readonly deployWorkflow: unknown
   readonly featureNames: ReadonlyArray<string>
   readonly smokeFiles: ReadonlyArray<string>
   readonly allowlistedTags: ReadonlyArray<string>
@@ -531,6 +535,7 @@ export const runDoctor = (input: DoctorInput): Finding[] => {
     ...(app ? checkSmokeCoverage(input) : []),
     ...(app ? checkAllowlist(input) : []),
     ...(app ? checkEffectMajor(input) : []),
+    ...(app ? checkDeploy({ workflow: input.deployWorkflow, mode: deployMode(input.pkg) }) : []),
   ]
 }
 
@@ -539,4 +544,206 @@ export const parseAllowlistedTags = (httpSource: string): string[] => {
   const block = httpSource.match(/STATUS_BY_TAG[^=]*=\s*\{([^}]*)\}/)
   if (!block?.[1]) return []
   return [...block[1].matchAll(/"?(\w+)"?\s*:\s*\d{3}/g)].flatMap((m) => (m[1] ? [m[1]] : []))
+}
+
+/** The events a workflow's `on:` names, in its string, list or mapping form. */
+const triggers = (workflow: unknown): string[] => {
+  const on = field({ value: workflow, key: "on" })
+  if (typeof on === "string") return [on]
+  return isRecord(on) ? Object.keys(on) : strings(on)
+}
+
+const triggerFinding = (input: {
+  readonly events: ReadonlyArray<string>
+  readonly mode: DeployMode
+}): Finding[] => {
+  const push = input.events.includes("push")
+  const remedy = 'set `on:` as the template does, or change "axioms": { "deploy" } in package.json'
+  if (input.mode === "push" && !push) {
+    return [
+      {
+        rule: "deploy",
+        problem: "package.json declares deploy on push, but deploy.yml has no push trigger",
+        remedy: `${remedy} to "manual"`,
+      },
+    ]
+  }
+  if (input.mode === "manual" && push) {
+    return [
+      {
+        rule: "deploy",
+        problem: 'package.json declares "deploy": "manual", but deploy.yml deploys on push',
+        remedy: `remove \`push:\` from \`on:\` in deploy.yml, or delete "deploy" from "axioms" in package.json`,
+      },
+    ]
+  }
+  if (input.mode === "manual" && !input.events.includes("workflow_dispatch")) {
+    return [
+      {
+        rule: "deploy",
+        problem:
+          "deploy.yml is manual-only but has no workflow_dispatch trigger, so nothing starts it",
+        remedy: "add `workflow_dispatch:` under `on:` in deploy.yml",
+      },
+    ]
+  }
+  return []
+}
+
+/**
+ * deploy.yml must run `axioms deploy` as a step that cannot be skipped or fail quietly, with the
+ * trigger package.json declares: on push to main by default, by hand only for `"deploy": "manual"`.
+ */
+const checkDeploy = (input: {
+  readonly workflow: unknown
+  readonly mode: DeployMode
+}): Finding[] => {
+  const workflow = input.workflow
+  if (workflow === null || workflow === undefined) {
+    return [
+      {
+        rule: "deploy",
+        problem:
+          workflow === null
+            ? `${DEPLOY_WORKFLOW} is missing, so nothing deploys main`
+            : `${DEPLOY_WORKFLOW} is not valid YAML`,
+        remedy:
+          workflow === null
+            ? "run `bunx axioms sync`"
+            : "fix it, or delete it and run `bunx axioms sync`",
+      },
+    ]
+  }
+  const jobsField = field({ value: workflow, key: "jobs" })
+  const jobs = isRecord(jobsField) ? Object.values(jobsField).filter(isRecord) : []
+  const deploys = jobs.some(
+    (job) =>
+      !optional(job) &&
+      (Array.isArray(job.steps) ? job.steps : [])
+        .filter(isRecord)
+        .some(
+          (step) =>
+            !optional(step) &&
+            typeof step.run === "string" &&
+            runsGate({ run: step.run, gate: "deploy" }),
+        ),
+  )
+  const gate: Finding[] = deploys
+    ? []
+    : [
+        {
+          rule: "deploy",
+          problem: "deploy.yml never runs `axioms deploy` as a step that must pass",
+          remedy: "add a step `run: bunx axioms deploy` with no if: or continue-on-error:",
+        },
+      ]
+  return [...gate, ...triggerFinding({ events: triggers(workflow), mode: input.mode })]
+}
+
+/** Every string a parsed workflow holds, depth first, in document order. */
+const allStrings = (value: unknown): string[] => {
+  if (typeof value === "string") return [value]
+  if (Array.isArray(value)) return value.flatMap(allStrings)
+  return isRecord(value) ? Object.values(value).flatMap(allStrings) : []
+}
+
+/** `GITHUB_TOKEN` is provided by Actions on every run; nobody sets it. */
+const SECRET_REF = /\$\{\{\s*secrets\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g
+
+/** The secrets deploy.yml reads (`${{ secrets.NAME }}`), so the doctor checks what it uses. */
+export const deploySecretNames = (workflow: unknown): string[] => [
+  ...new Set(
+    allStrings(workflow)
+      .flatMap((text) => [...text.matchAll(SECRET_REF)].map((match) => match[1] ?? ""))
+      .filter((name) => name !== "" && name !== "GITHUB_TOKEN"),
+  ),
+]
+
+/** The environments deploy.yml's jobs run in (`environment: x` or `environment: { name: x }`). */
+export const deployEnvironments = (workflow: unknown): string[] => {
+  const jobs = field({ value: workflow, key: "jobs" })
+  const names = (isRecord(jobs) ? Object.values(jobs) : []).map((job) => {
+    const env = field({ value: job, key: "environment" })
+    return typeof env === "string" ? env : field({ value: env, key: "name" })
+  })
+  return [...new Set(names.filter((n): n is string => typeof n === "string" && !n.includes("${{")))]
+}
+
+/** What the shell could read of the repo's secret names through `gh secret list`, or why not. */
+export type SecretsState =
+  | { readonly kind: "unavailable"; readonly reason: string }
+  | {
+      readonly kind: "live"
+      readonly repository: ReadonlyArray<string>
+      /** `secrets` is `null` for an environment GitHub does not have yet (it 404s until created). */
+      readonly environments: ReadonlyArray<{
+        readonly name: string
+        readonly secrets: ReadonlyArray<string> | null
+      }>
+    }
+
+/** Advice the doctor prints without failing: warnings, and what it could not verify. */
+export interface Advisory {
+  readonly warnings: ReadonlyArray<Finding>
+  readonly unverified: ReadonlyArray<string>
+}
+
+/**
+ * A missing deploy secret warns and never fails: a new project has none until its first deploy,
+ * and the doctor runs in every `check`, pre-commit hook and CI run. Unreadable secrets (no remote,
+ * no gh, no permission) are reported as not verified, as the branch-protection check does.
+ */
+export const checkDeploySecrets = (input: {
+  readonly required: ReadonlyArray<string>
+  readonly state: SecretsState
+}): Advisory => {
+  if (input.required.length === 0) return { warnings: [], unverified: [] }
+  const state = input.state
+  if (state.kind === "unavailable") {
+    return {
+      warnings: [],
+      unverified: [`– [secrets] ${input.required.join(", ")} not verified: ${state.reason}`],
+    }
+  }
+  const present = new Set([
+    ...state.repository,
+    ...state.environments.flatMap((env) => env.secrets ?? []),
+  ])
+  const where = [
+    "a repository secret",
+    ...state.environments.map((env) => `a secret of environment ${env.name}`),
+  ].join(" or ")
+  return {
+    warnings: input.required
+      .filter((name) => !present.has(name))
+      .map((name) => ({
+        rule: "secrets",
+        problem: `${name} is not ${where}, so \`axioms deploy\` in deploy.yml cannot authenticate`,
+        remedy: `gh secret set ${name}`,
+      })),
+    unverified: [],
+  }
+}
+
+/** `axioms doctor --json`: failures fail the doctor; warnings and unverified checks never do. */
+export const doctorReport = (
+  input: { readonly failures: ReadonlyArray<Finding> } & Advisory,
+): { readonly pass: boolean; readonly failures: ReadonlyArray<Finding> } & Advisory => ({
+  pass: input.failures.length === 0,
+  failures: input.failures,
+  warnings: input.warnings,
+  unverified: input.unverified,
+})
+
+export const DOCTOR_USAGE = "usage: axioms doctor [--json]"
+
+export const parseDoctorArgs = (
+  args: ReadonlyArray<string>,
+):
+  | { readonly ok: true; readonly json: boolean }
+  | { readonly ok: false; readonly error: string } => {
+  const unknown = args.find((arg) => arg !== "--json")
+  return unknown === undefined
+    ? { ok: true, json: args.length > 0 }
+    : { ok: false, error: `unexpected argument ${unknown}\n${DOCTOR_USAGE}` }
 }

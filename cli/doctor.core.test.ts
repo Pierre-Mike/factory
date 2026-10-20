@@ -1,20 +1,35 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { liteCiWorkflow } from "./adopt.core"
 import { writeCanon } from "./canon.core"
 import {
   BIOME_FILE_INCLUDES,
+  checkDeploySecrets,
+  DEPLOY_WORKFLOW,
   type DoctorInput,
+  deployEnvironments,
+  deploySecretNames,
+  doctorReport,
   HARNESS_BIOME,
   HARNESS_LEFTHOOK,
   HARNESS_PACKAGE,
   HARNESS_TSCONFIG,
   harnessProfile,
   parseAllowlistedTags,
+  parseDoctorArgs,
   runDoctor,
   TSCONFIG_BASE,
 } from "./doctor.core"
+import { renderDeployWorkflow } from "./new.core"
 
 const SHA = "df4cb1c069e1874edd31b4311f1884172cec0e10"
+
+/** The template's deploy.yml, so the doctor is tested against the file `axioms new` ships. */
+const DEPLOY_TEMPLATE = readFileSync(
+  join(import.meta.dir, "..", "template", DEPLOY_WORKFLOW),
+  "utf8",
+)
 
 const HEALTHY_JOBS = {
   check: {
@@ -68,6 +83,7 @@ const healthy: DoctorInput = {
   ],
   nestedBiomeConfigs: [],
   ciWorkflow: { jobs: HEALTHY_JOBS },
+  deployWorkflow: Bun.YAML.parse(DEPLOY_TEMPLATE),
   featureNames: ["health"],
   smokeFiles: ["health.smoke.test.ts"],
   allowlistedTags: ["InvalidVerboseFlag"],
@@ -468,6 +484,7 @@ describe("lite profile (axioms adopt)", () => {
     tsconfigReferences: [],
     tsconfigs: [{ path: TSCONFIG_BASE, config: null }],
     ciWorkflow: Bun.YAML.parse(liteCiWorkflow("main")),
+    deployWorkflow: null,
     featureNames: [],
     smokeFiles: [],
     allowlistedTags: [],
@@ -529,5 +546,214 @@ describe("lite profile (axioms adopt)", () => {
       "actions/checkout@v6",
     )
     expect(rules({ ...lite, ciWorkflow: Bun.YAML.parse(unpinned) })).toEqual(["ci"])
+  })
+})
+
+describe("deploy.yml", () => {
+  const template = Bun.YAML.parse(DEPLOY_TEMPLATE) as {
+    jobs: { deploy: { steps: Array<Record<string, unknown>> } }
+  }
+  const DEPLOY_STEP = template.jobs.deploy.steps.findIndex(
+    (step) => step.run === "bunx axioms deploy",
+  )
+  const manualPkg = { ...(healthy.pkg as object), axioms: { deploy: "manual" } }
+  const manual = Bun.YAML.parse(renderDeployWorkflow({ template: DEPLOY_TEMPLATE, mode: "manual" }))
+  /** The template with its deploy step (or job) changed. */
+  const withStep = (input: {
+    readonly change: Record<string, unknown>
+    readonly on?: "job"
+  }): unknown => {
+    const { change } = input
+    const copy = structuredClone(template)
+    const job = copy.jobs.deploy
+    if (input.on === "job") Object.assign(job, change)
+    else job.steps[DEPLOY_STEP] = { ...job.steps[DEPLOY_STEP], ...change }
+    return copy
+  }
+  const problems = (input: Partial<DoctorInput>) =>
+    runDoctor({ ...healthy, ...input }).map((f) => `${f.rule}: ${f.problem}`)
+
+  it("finds the deploy step in the template", () => {
+    expect(DEPLOY_STEP).toBeGreaterThan(-1)
+  })
+
+  it("fails when deploy.yml is missing or not valid YAML", () => {
+    expect(problems({ deployWorkflow: null })).toEqual([
+      "deploy: .github/workflows/deploy.yml is missing, so nothing deploys main",
+    ])
+    expect(problems({ deployWorkflow: undefined })).toEqual([
+      "deploy: .github/workflows/deploy.yml is not valid YAML",
+    ])
+    expect(runDoctor({ ...healthy, deployWorkflow: null })[0]?.remedy).toBe(
+      "run `bunx axioms sync`",
+    )
+  })
+
+  it("fails when deploy.yml does not run `bunx axioms deploy`", () => {
+    const dryRun = withStep({ change: { run: "bunx axioms deploy --dry-run" } })
+    expect(problems({ deployWorkflow: dryRun })).toEqual([
+      "deploy: deploy.yml never runs `axioms deploy` as a step that must pass",
+    ])
+    expect(
+      rules({ ...healthy, deployWorkflow: withStep({ change: { run: "bunx wrangler deploy" } }) }),
+    ).toEqual(["deploy"])
+  })
+
+  it("fails when the deploy step or its job can be skipped", () => {
+    expect(rules({ ...healthy, deployWorkflow: withStep({ change: { if: "false" } }) })).toEqual([
+      "deploy",
+    ])
+    expect(
+      rules({
+        ...healthy,
+        deployWorkflow: withStep({ change: { if: "false" }, on: "job" }),
+      }),
+    ).toEqual(["deploy"])
+  })
+
+  it("fails when the deploy step or its job is allowed to fail", () => {
+    expect(
+      rules({ ...healthy, deployWorkflow: withStep({ change: { "continue-on-error": true } }) }),
+    ).toEqual(["deploy"])
+    expect(
+      rules({
+        ...healthy,
+        deployWorkflow: withStep({ change: { "continue-on-error": true }, on: "job" }),
+      }),
+    ).toEqual(["deploy"])
+  })
+
+  it("accepts both modes, each with the trigger package.json declares", () => {
+    expect(runDoctor({ ...healthy, pkg: manualPkg, deployWorkflow: manual })).toEqual([])
+    expect(problems({ deployWorkflow: manual })).toEqual([
+      "deploy: package.json declares deploy on push, but deploy.yml has no push trigger",
+    ])
+    expect(problems({ pkg: manualPkg })).toEqual([
+      'deploy: package.json declares "deploy": "manual", but deploy.yml deploys on push',
+    ])
+  })
+
+  it("fails a manual deploy.yml nobody can start", () => {
+    const { workflow_dispatch: _, ...noDispatch } = (manual as { on: Record<string, unknown> }).on
+    expect(
+      rules({
+        ...healthy,
+        pkg: manualPkg,
+        deployWorkflow: { ...(manual as object), on: noDispatch },
+      }),
+    ).toEqual(["deploy"])
+  })
+
+  it("does not ask an adopted (lite) repo for a deploy workflow", () => {
+    const litePkg = { ...(healthy.pkg as object), axioms: { profile: "lite" } }
+    expect(rules({ ...healthy, pkg: litePkg, deployWorkflow: null })).not.toContain("deploy")
+  })
+})
+
+describe("renderDeployWorkflow", () => {
+  it("ships the template as is for push, and without the push trigger for manual", () => {
+    expect(renderDeployWorkflow({ template: DEPLOY_TEMPLATE, mode: "push" })).toBe(DEPLOY_TEMPLATE)
+    const manual = Bun.YAML.parse(
+      renderDeployWorkflow({ template: DEPLOY_TEMPLATE, mode: "manual" }),
+    )
+    expect(Object.keys((manual as { on: object }).on)).toEqual(["workflow_dispatch"])
+  })
+})
+
+describe("deploy secrets", () => {
+  const workflow = Bun.YAML.parse(DEPLOY_TEMPLATE)
+  const required = deploySecretNames(workflow)
+  const live = (input: {
+    readonly repository: ReadonlyArray<string>
+    readonly production?: ReadonlyArray<string> | null
+  }) =>
+    checkDeploySecrets({
+      required,
+      state: {
+        kind: "live",
+        repository: input.repository,
+        environments: [{ name: "production", secrets: input.production ?? null }],
+      },
+    })
+  /** The doctor's verdict with these warnings on top of a healthy project. */
+  const verdict = (advisory: ReturnType<typeof checkDeploySecrets>) =>
+    doctorReport({ failures: runDoctor(healthy), ...advisory })
+
+  it("reads the secret names and environments from deploy.yml", () => {
+    expect(required).toEqual(["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"])
+    expect(deployEnvironments(workflow)).toEqual(["production"])
+    expect(deployEnvironments({ jobs: { a: { environment: "staging" }, b: {} } })).toEqual([
+      "staging",
+    ])
+    expect(
+      deploySecretNames({ jobs: { a: { env: { T: "${{ secrets.GITHUB_TOKEN }}" } } } }),
+    ).toEqual([])
+  })
+
+  it("passes silently when both secrets exist, at repository or environment level", () => {
+    const both = live({
+      repository: ["CLOUDFLARE_API_TOKEN"],
+      production: ["CLOUDFLARE_ACCOUNT_ID"],
+    })
+    expect(both).toEqual({ warnings: [], unverified: [] })
+    expect(verdict(both)).toEqual({ pass: true, failures: [], warnings: [], unverified: [] })
+  })
+
+  it("warns, naming the fix, when one secret is missing", () => {
+    const one = live({ repository: ["CLOUDFLARE_ACCOUNT_ID"], production: [] })
+    expect(one.warnings).toEqual([
+      {
+        rule: "secrets",
+        problem:
+          "CLOUDFLARE_API_TOKEN is not a repository secret or a secret of environment production, so `axioms deploy` in deploy.yml cannot authenticate",
+        remedy: "gh secret set CLOUDFLARE_API_TOKEN",
+      },
+    ])
+    expect(verdict(one).pass).toBe(true)
+  })
+
+  it("warns once per secret when both are missing", () => {
+    const none = live({ repository: [] })
+    expect(none.warnings.map((w) => w.remedy)).toEqual([
+      "gh secret set CLOUDFLARE_API_TOKEN",
+      "gh secret set CLOUDFLARE_ACCOUNT_ID",
+    ])
+    const report = verdict(none)
+    expect(report.pass).toBe(true)
+    expect(report.failures).toEqual([])
+    expect(report.warnings).toHaveLength(2)
+  })
+
+  it("says what it could not verify and why when the secrets are unreadable", () => {
+    const unreadable = checkDeploySecrets({
+      required,
+      state: { kind: "unavailable", reason: "no git remotes found" },
+    })
+    expect(unreadable).toEqual({
+      warnings: [],
+      unverified: [
+        "– [secrets] CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID not verified: no git remotes found",
+      ],
+    })
+    expect(verdict(unreadable).pass).toBe(true)
+  })
+
+  it("has nothing to verify when deploy.yml names no secret", () => {
+    expect(
+      checkDeploySecrets({ required: [], state: { kind: "unavailable", reason: "x" } }),
+    ).toEqual({ warnings: [], unverified: [] })
+  })
+
+  it("fails the report only on failures, never on warnings", () => {
+    const failure = { rule: "ci", problem: "p", remedy: "r" }
+    expect(doctorReport({ failures: [failure], warnings: [], unverified: [] }).pass).toBe(false)
+  })
+})
+
+describe("parseDoctorArgs", () => {
+  it("takes --json and refuses anything else", () => {
+    expect(parseDoctorArgs([])).toEqual({ ok: true, json: false })
+    expect(parseDoctorArgs(["--json"])).toEqual({ ok: true, json: true })
+    expect(parseDoctorArgs(["--jsn"]).ok).toBe(false)
   })
 })

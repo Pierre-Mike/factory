@@ -5,7 +5,7 @@
  * of a crash.
  */
 import { join } from "node:path"
-import { isRecord } from "../doctor.core"
+import { isRecord, type SecretsState } from "../doctor.core"
 import {
   branchLookupFailure,
   type GithubRulesInput,
@@ -96,3 +96,41 @@ export const readGithubInput = (root: string): GithubRulesInput => ({
   expected: readJson(join(PKG_ROOT, RULES_FILE)),
   state: readGithubState(root),
 })
+
+const secretNames = (text: string): string[] => {
+  const list = parseJson(text)
+  return Array.isArray(list)
+    ? list.flatMap((entry) =>
+        isRecord(entry) && typeof entry.name === "string" ? [entry.name] : [],
+      )
+    : []
+}
+
+/**
+ * The names of the repo's secrets and of each environment's, through `gh secret list`. Values are
+ * never read (GitHub does not expose them). An environment that 404s does not exist yet: GitHub
+ * creates it on the first job that names it, so it simply has no secrets.
+ */
+export const readSecretsState = (input: {
+  readonly root: string
+  readonly environments: ReadonlyArray<string>
+}): SecretsState => {
+  const resolved = resolveRepo(input.root)
+  if (!resolved.ok) return { kind: "unavailable", reason: resolved.reason }
+  const list = (env: ReadonlyArray<string>) =>
+    gh({
+      args: ["secret", "list", "--repo", resolved.repo, ...env, "--json", "name"],
+      cwd: input.root,
+    })
+  const repository = list([])
+  if (!repository.ok) return { kind: "unavailable", reason: repository.reason }
+  const environments: { name: string; secrets: string[] | null }[] = []
+  for (const name of input.environments) {
+    const result = list(["--env", name])
+    if (!result.ok && !result.reason.includes("HTTP 404")) {
+      return { kind: "unavailable", reason: result.reason }
+    }
+    environments.push({ name, secrets: result.ok ? secretNames(result.stdout) : null })
+  }
+  return { kind: "live", repository: secretNames(repository.stdout), environments }
+}

@@ -3,9 +3,15 @@ import { existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import ts from "typescript"
 import {
+  type Advisory,
   CLAUDE_SETTINGS,
   CLAUDE_SKILLS_DIR,
+  checkDeploySecrets,
+  DEPLOY_WORKFLOW,
   type DoctorInput,
+  deployEnvironments,
+  deploySecretNames,
+  doctorReport,
   type Finding,
   HTTP_BOUNDARY,
   isRecord,
@@ -16,7 +22,7 @@ import {
 import { NOTES_DIR } from "../notes.core"
 import { checkGithubRules, githubNotice } from "../rules.core"
 import { HARNESS_DIR, harnessSkillFiles, harnessVersion, readJson, readText } from "../shell"
-import { readGithubInput } from "./github"
+import { readGithubInput, readSecretsState } from "./github"
 
 const listDir = (path: string): string[] => (existsSync(path) ? readdirSync(path) : [])
 
@@ -138,6 +144,7 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     ].map((path) => readTsconfig({ root, path })),
     nestedBiomeConfigs: nestedBiomeConfigs(root),
     ciWorkflow: readYaml(join(root, ".github", "workflows", "ci.yml")),
+    deployWorkflow: readYaml(join(root, DEPLOY_WORKFLOW)),
     featureNames: listSubdirs(join(server, "src", "features")),
     smokeFiles: listDir(join(server, "smoke")),
     allowlistedTags: parseAllowlistedTags(readText(join(server, "src", HTTP_BOUNDARY)) ?? ""),
@@ -158,9 +165,40 @@ export const report = (findings: ReadonlyArray<Finding>): boolean => {
   return false
 }
 
-export const doctor = async (root: string): Promise<boolean> => {
+/** The deploy secrets deploy.yml reads, checked by name on GitHub. No secret named, no gh call. */
+const deploySecrets = (input: { readonly root: string; readonly workflow: unknown }): Advisory => {
+  const required = deploySecretNames(input.workflow)
+  if (required.length === 0) return { warnings: [], unverified: [] }
+  const environments = deployEnvironments(input.workflow)
+  return checkDeploySecrets({
+    required,
+    state: readSecretsState({ root: input.root, environments }),
+  })
+}
+
+const runChecks = async (root: string) => {
   const github = readGithubInput(root)
+  const input = await readDoctorInput(root)
   const notice = githubNotice(github.state)
-  if (notice !== undefined) console.error(notice)
-  return report([...runDoctor(await readDoctorInput(root)), ...checkGithubRules(github)])
+  const advisory = deploySecrets({ root, workflow: input.deployWorkflow })
+  return doctorReport({
+    failures: [...runDoctor(input), ...checkGithubRules(github)],
+    warnings: advisory.warnings,
+    unverified: [...(notice === undefined ? [] : [notice]), ...advisory.unverified],
+  })
+}
+
+export const doctor = async (root: string): Promise<boolean> => {
+  const result = await runChecks(root)
+  for (const line of result.unverified) console.error(line)
+  for (const w of result.warnings)
+    console.error(`  ⚠ [${w.rule}] ${w.problem}\n      → ${w.remedy}`)
+  return report(result.failures)
+}
+
+/** `axioms doctor --json`: the same checks as one JSON document on stdout; warnings never fail it. */
+export const doctorJson = async (root: string): Promise<boolean> => {
+  const result = await runChecks(root)
+  await Bun.write(Bun.stdout, `${JSON.stringify(result, null, 2)}\n`)
+  return result.pass
 }

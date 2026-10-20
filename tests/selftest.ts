@@ -67,6 +67,56 @@ await step({
 })
 await step({ name: "check (fresh)", cmd: ["bun", cli, "check"], cwd: app })
 
+// deploy.yml is a gate: doctor fails without it and sync puts the template's back. The project
+// has no GitHub remote, so the deploy secrets are reported as not verified, never as a failure.
+await step({
+  name: "doctor --json passes and says the deploy secrets were not verified",
+  cmd: ["bun", cli, "doctor", "--json"],
+  cwd: app,
+  expectOutput: ['"pass": true', "CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID not verified"],
+})
+rmSync(join(app, ".github", "workflows", "deploy.yml"))
+await step({
+  name: "doctor fails without deploy.yml",
+  cmd: ["bun", cli, "doctor"],
+  cwd: app,
+  expectFailure: true,
+  expectOutput: [".github/workflows/deploy.yml is missing"],
+})
+await step({ name: "sync adds deploy.yml back", cmd: ["bun", cli, "sync"], cwd: app })
+await step({
+  name: "sync restored the template's deploy.yml",
+  cmd: ["git", "diff", "--exit-code"],
+  cwd: app,
+})
+// The other mode: deploy.yml runs only when started by hand, and doctor and the linters accept it.
+const manualApp = join(workdir, "manual-app")
+await step({
+  name: "new --deploy manual",
+  cmd: [
+    "bun",
+    cli,
+    "new",
+    manualApp,
+    "--deploy",
+    "manual",
+    "--no-install",
+    "--harness",
+    `file:${PKG_ROOT}`,
+  ],
+  cwd: workdir,
+})
+await step({
+  name: "doctor accepts a manual-only deploy",
+  cmd: ["bun", cli, "doctor"],
+  cwd: manualApp,
+})
+await step({
+  name: "lint-workflows on the manual deploy.yml",
+  cmd: ["bun", cli, "lint-workflows"],
+  cwd: manualApp,
+})
+
 // A formatting-only change: check names the file and the fix command, never Biome's diff (issue
 // #10). The lint section must stay a few lines; Biome's diff of this one file is 62 lines (29 KB
 // with color). The whole run, every gate included, has a looser budget.

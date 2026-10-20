@@ -1,14 +1,14 @@
 /**
- * `axioms new <dir> [--harness <spec>] [--no-install]`: stamp a project from template/, pin the
- * harness, and sync the rules into it. The default harness spec is the GitHub tag of the running
+ * `axioms new <dir> [--harness <spec>] [--deploy push|manual] [--no-install]`: stamp a project
+ * from template/, pin the harness, record the deploy mode, and sync the rules into it. The default harness spec is the GitHub tag of the running
  * version, also when the CLI runs from a checkout: `axioms doctor` rejects a local path, so a
  * `file:` default would hand out a project that fails its first `check`.
  */
 import { existsSync } from "node:fs"
 import { cp, readdir } from "node:fs/promises"
 import { basename, join, relative, resolve } from "node:path"
-import { HARNESS_PACKAGE } from "../doctor.core"
-import { parseNewArgs, releaseSpec } from "../new.core"
+import { DEPLOY_WORKFLOW, HARNESS_PACKAGE } from "../doctor.core"
+import { parseNewArgs, releaseSpec, renderDeployWorkflow, withDeployMode } from "../new.core"
 import { fail, harnessVersion, run, runTool, TEMPLATE_DIR } from "../shell"
 import { sync } from "./sync"
 
@@ -35,7 +35,7 @@ const replaceIn = async (input: {
 export const newProject = async (argv: ReadonlyArray<string>): Promise<void> => {
   const parsed = parseNewArgs(argv)
   if (!parsed.ok) return fail(parsed.error)
-  const { dir, harness, install } = parsed.args
+  const { dir, harness, install, deploy } = parsed.args
   const target = resolve(dir)
   if (existsSync(target)) fail(`${target} already exists`)
   const appName = basename(target)
@@ -52,7 +52,12 @@ export const newProject = async (argv: ReadonlyArray<string>): Promise<void> => 
   const pkgPath = join(target, "package.json")
   const pkg = JSON.parse(await Bun.file(pkgPath).text())
   pkg.devDependencies = { ...pkg.devDependencies, [HARNESS_PACKAGE]: spec }
-  await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
+  await Bun.write(pkgPath, `${JSON.stringify(withDeployMode({ pkg, mode: deploy }), null, 2)}\n`)
+  const deployPath = join(target, DEPLOY_WORKFLOW)
+  await Bun.write(
+    deployPath,
+    renderDeployWorkflow({ template: await Bun.file(deployPath).text(), mode: deploy }),
+  )
 
   // A step that fails must stop here: printing "created" over a project with no hooks or no first
   // commit hands out something that breaks on the first push (ci-dry-run needs HEAD).
@@ -99,5 +104,7 @@ next:
 
 on GitHub, in this order (doctor checks branch protection once main is pushed):
   gh repo create <owner>/<name> --source . --remote origin --push
-  bunx axioms rules --apply`)
+  bunx axioms rules --apply
+  gh secret set CLOUDFLARE_API_TOKEN && gh secret set CLOUDFLARE_ACCOUNT_ID
+${deploy === "push" ? "  (.github/workflows/deploy.yml deploys every push to main)" : "  gh workflow run deploy   # deploy.yml runs only when started by hand"}`)
 }

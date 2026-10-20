@@ -121,6 +121,13 @@ fills every section of the PR template). On a CI runner each scanner is download
 version and refused unless the archive matches the SHA256 pinned in `cli/tools.core.ts`. Every
 GitHub Action is pinned by commit SHA.
 
+A separate `.github/workflows/deploy.yml` runs `bunx axioms deploy` on every push to `main`, in a
+`production` environment, with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from secrets.
+`axioms new --deploy manual` (or `"axioms": { "deploy": "manual" }` in package.json) makes it run
+only when started by hand. It is not in ci.yml because `axioms ci-dry-run` replays every ci.yml
+job. Doctor fails when deploy.yml is missing, does not run `axioms deploy`, or lets that step be
+skipped or fail, and warns when either secret is missing on GitHub.
+
 `axioms baseline` counts the checks Biome, the tests and the notes gate report and compares them to
 `gate-baseline.json`. A drop fails. After adding checks on purpose, run `axioms baseline --update`
 and commit the file. The factory's own CI runs it as the `gate-baseline` job.

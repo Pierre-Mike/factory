@@ -11,7 +11,7 @@ import { baseline } from "./commands/baseline"
 import { check } from "./commands/check"
 import { deploy } from "./commands/deploy"
 import { dev } from "./commands/dev"
-import { doctor } from "./commands/doctor"
+import { doctor, doctorJson } from "./commands/doctor"
 import { ciDryRun } from "./commands/dryrun"
 import type { GateRun } from "./commands/gates"
 import { newProject } from "./commands/new"
@@ -25,14 +25,16 @@ import { sync } from "./commands/sync"
 import { lintWorkflows } from "./commands/workflows"
 import { commitSubjectProblem } from "./commit-msg.core"
 import { parseDeployArgs } from "./deploy.core"
+import { parseDoctorArgs } from "./doctor.core"
 import { buildReport, parseReportArgs, renderReport } from "./report.core"
 import { parseRulesArgs } from "./rules.core"
 import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
 
 const HELP = `axioms ${harnessVersion()}
 
-  axioms new <dir> [--harness <spec>] [--no-install]
-                                        create a project from the template (pins the release tag)
+  axioms new <dir> [--harness <spec>] [--deploy push|manual] [--no-install]
+                                        create a project from the template (pins the release tag;
+                                        --deploy manual: deploy.yml runs only when started by hand)
   axioms adopt [--harness <spec>] [--no-install]
                                         bring the lite harness to an existing repo (no app template)
   axioms slice <feature> [--door] [--no-io]
@@ -50,9 +52,11 @@ const HELP = `axioms ${harnessVersion()}
   axioms lint-workflows                 actionlint + zizmor on .github/workflows
   axioms secret-scan [--staged]         gitleaks on the committed history, or the staged changes
   axioms baseline [--update]            fail when a gate reports fewer checks than gate-baseline.json (--update rewrites it)
-  axioms doctor                         check that every harness gate is wired
+  axioms doctor [--json]                check that every harness gate is wired (--json: one JSON
+                                        document with failures, warnings and what was not verified)
   axioms rules [--apply]                branch protection from harness/github.rules.json (--apply writes it via gh)
-  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, .claude settings + skills, biome.json, lefthook.yml
+  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, .claude settings + skills, biome.json, lefthook.yml;
+                                        add .github/workflows/deploy.yml when missing
   axioms hooks                          install the git hooks (runs on bun install)
   axioms commit-msg <file>              conventional-commit check (git hook)
   axioms biome|tsc <args>               run the pinned tool`
@@ -124,9 +128,12 @@ switch (command) {
   case "pr-body":
     exit(await prBody({ root, args }))
     break
-  case "doctor":
-    exit(await doctor(root))
+  case "doctor": {
+    const parsed = parseDoctorArgs(args)
+    if (!parsed.ok) fail(parsed.error)
+    else exit(await (parsed.json ? doctorJson(root) : doctor(root)))
     break
+  }
   case "rules": {
     const parsed = parseRulesArgs(args)
     if (!parsed.ok) fail(parsed.error)
