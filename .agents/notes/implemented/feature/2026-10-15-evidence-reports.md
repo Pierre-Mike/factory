@@ -53,7 +53,8 @@ harness itself writes is machine-readable.
   `--json` because both come from the same core output.
 - `check` keeps running all gates after a failure, as before. `smoke` stops at the first failing
   phase (later phases need the earlier ones), so its report lists only the phases that ran:
-  `build web`, `migrations`, `wrangler dev`, `smoke tests`. Counts reflect executed gates.
+  `build web`, `migrations`, `wrangler dev`, `smoke tests`, `behavior` (see
+  [the behavior pass](2026-10-20-smoke-behavior-pass.md)). Counts reflect executed gates.
 - A gate that throws (a crashing tool, a missing file) is recorded as a failed gate with the error
   as its evidence instead of killing the process before the report exists. The run's summary and
   exit code count it as failed, and `check` still runs the remaining gates.

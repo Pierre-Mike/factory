@@ -167,7 +167,59 @@ if (!stubIo.includes('FIND_BY_ID = "SELECT ? AS id"')) {
 }
 await Bun.write(widgetsIo, stubIo.replace("SELECT ? AS id", "SELECT id FROM widgets WHERE id = ?"))
 await step({ name: "check (with slice)", cmd: ["bun", cli, "check"], cwd: app })
-await step({ name: "smoke", cmd: ["bun", cli, "smoke"], cwd: app })
+/**
+ * `axioms smoke --json`, with the behavior pass checked as its own gate in the report: it passes,
+ * or it fails and its evidence names `failingRoute`.
+ */
+const smokeBehavior = async (input: { readonly name: string; readonly failingRoute?: string }) => {
+  console.error(`\n━━ selftest: ${input.name} ━━`)
+  const proc = Bun.spawn(["bun", cli, "smoke", "--json"], {
+    cwd: app,
+    stdout: "pipe",
+    stderr: "inherit",
+  })
+  const stdout = await new Response(proc.stdout).text()
+  const code = await proc.exited
+  const report = JSON.parse(stdout) as {
+    readonly gates: ReadonlyArray<{ name: string; pass: boolean; errors?: string[] }>
+  }
+  const gate = report.gates.find(({ name }) => name === "behavior")
+  const expectPass = input.failingRoute === undefined
+  const named = (gate?.errors ?? []).some((line) => line.includes(input.failingRoute ?? ""))
+  const problems = [
+    (code === 0) === expectPass ? null : `smoke exited ${code}`,
+    gate === undefined ? "the --json report has no behavior gate" : null,
+    gate !== undefined && gate.pass !== expectPass
+      ? `the behavior gate pass is ${gate.pass}`
+      : null,
+    expectPass || named ? null : `the behavior gate does not name ${input.failingRoute}`,
+  ].filter((problem) => problem !== null)
+  if (problems.length > 0) {
+    console.error(stdout)
+    console.error(
+      `✖ selftest failed at: ${input.name} (${problems.join("; ")}; project kept at ${app})`,
+    )
+    process.exit(1)
+  }
+}
+
+// The generated slice's POST /:id must pass the behavior pass as generated.
+await smokeBehavior({ name: "smoke --json (the behavior pass is its own gate)" })
+// A route that parses the body itself throws on malformed JSON: a 500 the pass must name.
+const apiPath = join(app, "apps", "server", "src", "api.ts")
+const api = await Bun.file(apiPath).text()
+await Bun.write(
+  apiPath,
+  api.replace(
+    '.route("/health",',
+    '.post("/planted", async (c) => c.json(await c.req.json()))\n    .route("/health",',
+  ),
+)
+await smokeBehavior({
+  name: "smoke fails on a route that throws on a malformed body",
+  failingRoute: "POST /api/planted",
+})
+await Bun.write(apiPath, api)
 await step({ name: "deploy dry run", cmd: ["bun", cli, "deploy", "--dry-run"], cwd: app })
 await step({
   name: "deploy refuses placeholders",

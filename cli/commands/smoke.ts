@@ -1,8 +1,9 @@
 /**
  * `axioms smoke`: prove the app runs on the real runtime. Builds the web app, applies the D1
  * migrations to a fresh local database, starts `wrangler dev`, waits for /api/health, then runs
- * apps/server/smoke/*.smoke.test.ts with SMOKE_URL pointing at it. Type checks and unit tests
- * cannot catch a worker that fails to boot or a migration that does not apply; this can.
+ * apps/server/smoke/*.smoke.test.ts with SMOKE_URL pointing at it, then the behavior pass
+ * (commands/behavior.ts) over every write route. Type checks and unit tests cannot catch a worker
+ * that fails to boot or a migration that does not apply; this can.
  * Each phase is a gate, so `--json` / `--report` get per-phase evidence; phases depend on one
  * another, so the run stops at the first failure.
  */
@@ -10,6 +11,7 @@ import { rm } from "node:fs/promises"
 import { join } from "node:path"
 import type { Subprocess } from "bun"
 import { run, type Sink, teeStream } from "../shell"
+import { behavior } from "./behavior"
 import { failedNames, type Gate, type GateRun, runGates } from "./gates"
 
 const PERSIST = ".wrangler/smoke"
@@ -110,6 +112,7 @@ export const smoke = async (input: {
           sink,
         })) === 0,
     ],
+    ["behavior", () => behavior({ root: input.root, url })],
   ]
 
   try {
