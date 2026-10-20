@@ -12,6 +12,7 @@ import { run, runTool } from "../shell"
 import { findSuppressions } from "../suppressions.core"
 import { doctor } from "./doctor"
 import { failedNames, type Gate, type GateRun, runGates, skippedNames } from "./gates"
+import { lint } from "./lint"
 import { notes } from "./notes"
 
 const IGNORED = /(^|\/)(node_modules|dist|\.wrangler)\//
@@ -68,10 +69,7 @@ export const check = async (input: {
 }): Promise<GateRun> => {
   const root = input.root
   const gates: ReadonlyArray<Gate> = [
-    [
-      "lint",
-      async (sink) => (await runTool({ tool: "biome", args: ["ci", "."], cwd: root, sink })) === 0,
-    ],
+    ["lint", (sink) => lint({ root, sink })],
     [
       "typecheck",
       // An adopted repo may have no TypeScript config at all. The skip passes with its reason,

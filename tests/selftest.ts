@@ -55,6 +55,43 @@ await step({
 })
 await step({ name: "check (fresh)", cmd: ["bun", cli, "check"], cwd: app })
 
+// A formatting-only change: check names the file and the fix command, never Biome's diff (issue
+// #10). The lint section must stay a few lines; Biome's diff of this one file is 62 lines (29 KB
+// with color). The whole run, every gate included, has a looser budget.
+const MAX_LINT_LINES = 10
+const MAX_CHECK_LINES = 200
+const reflowed = join("apps", "server", "src", "features", "health", "health.core.ts")
+const reflowedPath = join(app, reflowed)
+const formatted = await Bun.file(reflowedPath).text()
+await Bun.write(reflowedPath, formatted.replaceAll("\n  ", "\n      "))
+console.error("\n━━ selftest: check names a formatting-only change and the fix command ━━")
+const formatRun = Bun.spawn(["bun", cli, "check"], { cwd: app, stdout: "pipe", stderr: "pipe" })
+const [formatOut, formatErr] = await Promise.all([
+  new Response(formatRun.stdout).text(),
+  new Response(formatRun.stderr).text(),
+])
+const formatOutput = formatOut + formatErr
+console.error(formatOutput)
+const checkLines = formatOutput.split("\n").length
+const lintLines = (formatOutput.split("── lint ──")[1] ?? "")
+  .split("\n── ")[0]
+  ?.trim()
+  .split("\n").length
+const formatProblems = [
+  (await formatRun.exited) === 0 ? "check passed" : null,
+  formatOutput.includes(reflowed) ? null : `the output does not name ${reflowed}`,
+  formatOutput.includes("run `bun run lint` to fix") ? null : "the output has no fix command",
+  lintLines !== undefined && lintLines <= MAX_LINT_LINES
+    ? null
+    : `the lint section has ${lintLines} lines, over ${MAX_LINT_LINES}`,
+  checkLines < MAX_CHECK_LINES ? null : `${checkLines} lines, over ${MAX_CHECK_LINES}`,
+].filter((problem) => problem !== null)
+if (formatProblems.length > 0) {
+  console.error(`✖ selftest failed at: formatting-only check (${formatProblems.join("; ")})`)
+  process.exit(1)
+}
+await Bun.write(reflowedPath, formatted)
+
 // A promotion that only flips the status word: the notes gate must reject it, then accept the fix.
 const notePath = join(app, ".agents", "notes", "implemented", "process", "2026-01-01-use-d1.md")
 const note = (body: string) =>
