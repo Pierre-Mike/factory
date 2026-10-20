@@ -43,7 +43,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms notes [--seal]                 check .agents/notes; --seal freezes newly archived notes
   axioms pr-body [file|-]               check a PR body fills every PR-template section (no arg: the CI pull_request event)
   axioms smoke [--json] [--report <path>]
-                                        run smoke/ against a local wrangler dev
+                                        run smoke/, then the behavior pass, against a local wrangler dev
                                         (--json: one JSON evidence document on stdout; --report: the same to a file)
   axioms deploy [--dry-run]             bundle + migrate locally; without --dry-run, deploy for real
   axioms ci-dry-run [--all]             replay ci.yml on a clean clone (pre-push, when CI/CD files change)

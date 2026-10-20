@@ -94,7 +94,7 @@ git clone https://github.com/Pierre-Mike/factory.git
 bun factory/cli/main.ts new my-app   # stamp, pin v<version>, install, format, commit
 cd my-app
 bun run check       # every gate
-bun run smoke       # the real worker over HTTP
+bun run smoke       # the real worker over HTTP, then bad bodies sent to every write route
 bun run slice x     # add a feature slice
 bun run deploy:dry  # bundle the worker and apply migrations locally (no Cloudflare account)
 bun run ci:dry      # replay ci.yml on a clean clone; pre-push runs it when CI/CD files change

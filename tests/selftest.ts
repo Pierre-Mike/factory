@@ -227,7 +227,64 @@ await step({
   cwd: app,
 })
 await step({ name: "check (with slice and door consumer)", cmd: ["bun", cli, "check"], cwd: app })
-await step({ name: "smoke", cmd: ["bun", cli, "smoke"], cwd: app })
+/**
+ * `axioms smoke --json`, with the behavior pass checked as its own gate in the report: it passes,
+ * or it fails and its evidence names `failingRoute`.
+ */
+const smokeBehavior = async (input: { readonly name: string; readonly failingRoute?: string }) => {
+  console.error(`\n━━ selftest: ${input.name} ━━`)
+  const proc = Bun.spawn(["bun", cli, "smoke", "--json"], {
+    cwd: app,
+    stdout: "pipe",
+    stderr: "inherit",
+  })
+  const stdout = await new Response(proc.stdout).text()
+  const code = await proc.exited
+  const report = JSON.parse(stdout) as {
+    readonly gates: ReadonlyArray<{ name: string; pass: boolean; errors?: string[] }>
+  }
+  const gate = report.gates.find(({ name }) => name === "behavior")
+  const expectPass = input.failingRoute === undefined
+  const named = (gate?.errors ?? []).some((line) => line.includes(input.failingRoute ?? ""))
+  const problems = [
+    (code === 0) === expectPass ? null : `smoke exited ${code}`,
+    gate === undefined ? "the --json report has no behavior gate" : null,
+    gate !== undefined && gate.pass !== expectPass
+      ? `the behavior gate pass is ${gate.pass}`
+      : null,
+    expectPass || named ? null : `the behavior gate does not name ${input.failingRoute}`,
+  ].filter((problem) => problem !== null)
+  if (problems.length > 0) {
+    console.error(stdout)
+    console.error(
+      `✖ selftest failed at: ${input.name} (${problems.join("; ")}; project kept at ${app})`,
+    )
+    process.exit(1)
+  }
+}
+
+// Plant routes in front of the slices: each string is inserted before the health mount.
+const apiPath = join(app, "apps", "server", "src", "api.ts")
+const api = await Bun.file(apiPath).text()
+const plant = (routes: ReadonlyArray<string>) =>
+  Bun.write(
+    apiPath,
+    api.replace('.route("/health",', `${routes.join("\n    ")}\n    .route("/health",`),
+  )
+// A write route that takes no body never parses it, so it answers malformed JSON with a 2xx.
+const ping = '.post("/ping", (c) => c.json({ ok: true }))'
+// A route that parses the body itself throws on malformed JSON: a 500 the pass must name.
+const throwing = '.post("/planted", async (c) => c.json(await c.req.json()))'
+
+// The generated slice's POST /:id and a body-less route pass the behavior pass as written.
+await plant([ping])
+await smokeBehavior({ name: "smoke --json (the behavior pass is its own gate)" })
+await plant([ping, throwing])
+await smokeBehavior({
+  name: "smoke fails on a route that throws on a malformed body",
+  failingRoute: "POST /api/planted",
+})
+await Bun.write(apiPath, api)
 await step({ name: "deploy dry run", cmd: ["bun", cli, "deploy", "--dry-run"], cwd: app })
 await step({
   name: "deploy refuses placeholders",

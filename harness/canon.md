@@ -67,6 +67,15 @@ shared/                        # effect Schema contracts used by server and web
   A Hono `HTTPException` (malformed JSON, `bodyLimit`, the auth middleware) keeps its 400, 401,
   403 or 413 status with the tag `TAG_BY_HTTP_EXCEPTION_STATUS` gives it; any other thrown error
   is a redacted 500. `platform/http.test.ts` pins both.
+- No write route (`POST`, `PUT`, `PATCH`, `DELETE`) answers a malformed JSON body with a 5xx: it
+  refuses it with a 4xx `ApiErrorBody` envelope, or takes no body and ignores it. A 1 MB body
+  gets a 4xx envelope, and no response body carries a stack frame or SQL.
+  `api.ts` caps bodies at `MAX_BODY_BYTES`; decode bodies with `jsonBody(schema)`, never a raw
+  `c.req.json()`. Once any write route answers 401 or 403 without a session, every write route
+  must, checking the session before it reads the body. A route that needs no session (a login) is
+  listed in `apps/server/public-routes.json` as `"<METHOD> <path>": "<Agent Note path>"`, and that
+  note names the route and says why. The `behavior` gate of `axioms smoke` probes every route
+  `buildApp` mounts and enforces all of this.
 - Shared Schema contracts live in `shared/src`. The web client decodes every response with them,
   and excess fields are rejected.
 - Define `queryOptions` once. The route loader calls `ensureQueryData`, the component calls
@@ -198,7 +207,7 @@ harness. Fix the note, never the gate, and never copy a second notes gate into t
 bun install        # installs dependencies and git hooks
 bun run dev        # wrangler dev (API, :8787) + vite (web, :5173)
 bun run check      # lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, duplication
-bun run smoke      # build the web app, start wrangler dev locally, run smoke/ over HTTP
+bun run smoke      # build the web app, start wrangler dev locally, run smoke/ and the behavior pass over HTTP
 bun run slice      # generate a feature slice
 bun run deploy:dry # bundle the worker and apply migrations locally, no Cloudflare account needed
 bun run ci:dry     # replay ci.yml on a clean clone (pre-push does this for CI/CD changes)
