@@ -25,13 +25,16 @@ app only wires handlers, so it needs no runtime. The gate keeps `POST`, `PUT`, `
 entries, which are middleware. Every path parameter and wildcard becomes `1`.
 
 **Probes.** Each write route gets two requests with `content-type: application/json` and no
-cookie or authorization header: `{bad json`, and a well-formed JSON object of just over 1 MB. Each
-answer must be a 4xx whose body is the `ApiErrorBody` envelope (`{ ok: false, error: { _tag } }`
-with a string `_tag`). No body may contain a V8 stack frame (`at fn (file:line:col)`) or SQL: the
-upper-case statement keywords (`SELECT … FROM`, `INSERT INTO`, `UPDATE x SET`, `DELETE FROM`,
-`CREATE`/`DROP`/`ALTER TABLE`) or the database error texts `D1_ERROR`, `SQLITE_*` and
-`no such table/column`. Every problem is printed as `✖ <METHOD> <path> (<probe>): <problem>`, so
-the gate's evidence in `--json` names the route.
+cookie or authorization header: `{bad json`, and a well-formed JSON object of just over 1 MB.
+A 5xx fails either probe. A 4xx must carry the `ApiErrorBody` envelope, an object with
+`ok: false` and an `error` whose `_tag` is a string. A 2xx or 3xx passes for the malformed-JSON
+probe only: a write route that takes no body (`POST /logout`, `DELETE /items/:id`) never parses
+it and answers correctly. The 1 MB probe must be refused with a 4xx and the envelope. No body, whatever its
+status, may contain a V8 stack frame (`at fn (file:line:col)`) or SQL: the upper-case statement
+keywords (`SELECT … FROM`, `INSERT INTO`, `UPDATE x SET`, `DELETE FROM`, `CREATE`/`DROP`/`ALTER
+TABLE`) or the database error texts `D1_ERROR`, `SQLITE_*` and `no such table/column`. Every
+problem is printed as `✖ <METHOD> <path> (<probe>): <problem>`, so the gate's evidence in
+`--json` names the route.
 
 **Body limit.** The template's `api.ts` mounts `hono/body-limit` with `MAX_BODY_BYTES` (100 KiB)
 in front of every route. Without it, on `wrangler dev`, a 1 MB body that matches the generated
@@ -87,7 +90,9 @@ example at a session check.
 
 - Every write route a project adds is probed by `axioms smoke` and in CI, with no test written
   for it. A route that parses its body with a raw `c.req.json()` answers 500 on malformed JSON
-  and fails the gate by name; `jsonBody(schema)` passes.
+  and fails the gate by name; `jsonBody(schema)` passes, and so does a route that takes no body.
+- A body-less route that answers 2xx to malformed JSON is not checked for the envelope. Whether
+  it should have refused an anonymous caller is the session check's job.
 - A route whose path parameter has a regex that `1` does not match answers the 404 envelope. That
   passes, so the probe then tested the router's edge, not the handler.
 - Routes mounted outside `buildApp` (for example straight in `worker.ts`) are not probed.
@@ -101,13 +106,14 @@ example at a session check.
 
 ## Verification
 
-- `cli/behavior.core.test.ts`: the route list, the probe paths and bodies, the verdicts, leak
-  detection, the public routes file and the session check.
+- `cli/behavior.core.test.ts`: the route list, the probe paths and bodies, the verdicts (a
+  body-less route answering 200 or 204 to malformed JSON passes, a 1 MB body answered 200
+  fails), leak detection, the public routes file and the session check.
 - `template/apps/server/src/api.test.ts`: a body over `MAX_BODY_BYTES` answers 413
   `PayloadTooLarge`, and one under it reaches the router.
-- `bun run selftest`: `axioms smoke --json` on a project with a generated slice reports a passing
-  `behavior` gate. A planted `POST /planted` that calls `c.req.json()` fails it, and the gate's
-  evidence names `POST /api/planted`.
+- `bun run selftest`: `axioms smoke --json` on a project with a generated slice and a planted
+  body-less `POST /ping` reports a passing `behavior` gate. A planted `POST /planted` that calls
+  `c.req.json()` fails it, and the gate's evidence names `POST /api/planted`.
 - By hand on a generated project: an auth middleware answering 401 on `POST /api/widgets/:id` and
   an open `POST /api/open` failed the gate, naming `POST /api/open`. Listing it in
   `apps/server/public-routes.json` with a note that names it passed.

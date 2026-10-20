@@ -67,8 +67,9 @@ shared/                        # effect Schema contracts used by server and web
   A Hono `HTTPException` (malformed JSON, `bodyLimit`, the auth middleware) keeps its 400, 401,
   403 or 413 status with the tag `TAG_BY_HTTP_EXCEPTION_STATUS` gives it; any other thrown error
   is a redacted 500. `platform/http.test.ts` pins both.
-- Every write route (`POST`, `PUT`, `PATCH`, `DELETE`) answers a malformed JSON body and a 1 MB
-  body with a 4xx `ApiErrorBody` envelope, and no response body carries a stack frame or SQL.
+- No write route (`POST`, `PUT`, `PATCH`, `DELETE`) answers a malformed JSON body with a 5xx: it
+  refuses it with a 4xx `ApiErrorBody` envelope, or takes no body and ignores it. A 1 MB body
+  gets a 4xx envelope, and no response body carries a stack frame or SQL.
   `api.ts` caps bodies at `MAX_BODY_BYTES`; decode bodies with `jsonBody(schema)`, never a raw
   `c.req.json()`. Once any write route answers 401 or 403 without a session, every write route
   must, checking the session before it reads the body. A route that needs no session (a login) is

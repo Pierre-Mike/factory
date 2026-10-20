@@ -3,10 +3,10 @@
  * the routes of the built Hono app (`buildApp(...).routes`, the value `AppType` is the type of),
  * sends every write route a malformed JSON body and a 1 MB body over real HTTP, and hands the
  * answers to this module: which routes to probe, what each answer means, and which routes broke a
- * rule. The rules are the ones that separated apps in the A/B eval (issue #15): a bad body is a
- * 4xx with the shared `ApiErrorBody` envelope, no body leaks a stack frame or SQL, and once the app
- * has sessions, every write route not listed in `apps/server/public-routes.json` refuses a request
- * without one.
+ * rule. The rules are the ones that separated apps in the A/B eval (issue #15): a bad body never
+ * causes a 5xx, a refusal is a 4xx with the shared `ApiErrorBody` envelope, no body leaks a stack
+ * frame or SQL, and once the app has sessions, every write route not listed in
+ * `apps/server/public-routes.json` refuses a request without one.
  */
 
 export interface Route {
@@ -42,6 +42,12 @@ export const probePath = (pattern: string): string => pattern.replace(PARAM, "1"
 export interface Probe {
   readonly name: string
   readonly body: string
+  /**
+   * A route that takes no body (`POST /logout`, `DELETE /items/:id`) never parses it, so a 2xx or
+   * 3xx answer is correct. Only the malformed-JSON probe allows that: `bodyLimit` refuses the
+   * 1 MB body before any route runs.
+   */
+  readonly ignorable: boolean
 }
 
 const MB = 1024 * 1024
@@ -50,11 +56,11 @@ const MB = 1024 * 1024
  * What every write route is sent, with `content-type: application/json` and no session. The 1 MB
  * body is well-formed JSON, so it tests the size limit rather than the parser.
  */
-export const MALFORMED_JSON: Probe = { name: "malformed JSON", body: "{bad json" }
+export const MALFORMED_JSON: Probe = { name: "malformed JSON", body: "{bad json", ignorable: true }
 
 export const PROBES: ReadonlyArray<Probe> = [
   MALFORMED_JSON,
-  { name: "1 MB body", body: JSON.stringify({ pad: "a".repeat(MB) }) },
+  { name: "1 MB body", body: JSON.stringify({ pad: "a".repeat(MB) }), ignorable: false },
 ]
 
 const isEnvelope = (body: string): boolean => {
@@ -73,19 +79,27 @@ const isEnvelope = (body: string): boolean => {
   }
 }
 
-/** What is wrong with the answer to one probe: a status outside 4xx, no envelope, a leak. */
+/**
+ * What is wrong with the answer to one probe. A 4xx must carry the shared envelope. A 5xx always
+ * fails. A 2xx or 3xx passes only for a probe the route may ignore. No body may leak.
+ */
 export const probeProblems = (answer: {
+  readonly probe: Probe
   readonly status: number
   readonly body: string
-}): string[] => [
-  ...(answer.status >= 400 && answer.status < 500
-    ? []
-    : [`answered ${answer.status}, expected a 4xx`]),
-  ...(isEnvelope(answer.body)
-    ? []
-    : ["the body is not the ApiErrorBody envelope { ok: false, error: { _tag } }"]),
-  ...findLeaks(answer.body).map((leak) => `the body leaks ${leak}`),
-]
+}): string[] => {
+  const { probe, status, body } = answer
+  const refused = status >= 400 && status < 500
+  const ignored = probe.ignorable && status >= 200 && status < 400
+  const expected = probe.ignorable ? "a 4xx or a route that ignores the body" : "a 4xx"
+  return [
+    ...(refused || ignored ? [] : [`answered ${status}, expected ${expected}`]),
+    ...(ignored || isEnvelope(body)
+      ? []
+      : ["the body is not the ApiErrorBody envelope { ok: false, error: { _tag } }"]),
+    ...findLeaks(body).map((leak) => `the body leaks ${leak}`),
+  ]
+}
 
 /** Where a project lists the write routes that need no session, relative to the project root. */
 export const PUBLIC_ROUTES_FILE = "apps/server/public-routes.json"

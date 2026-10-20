@@ -203,18 +203,23 @@ const smokeBehavior = async (input: { readonly name: string; readonly failingRou
   }
 }
 
-// The generated slice's POST /:id must pass the behavior pass as generated.
-await smokeBehavior({ name: "smoke --json (the behavior pass is its own gate)" })
-// A route that parses the body itself throws on malformed JSON: a 500 the pass must name.
+// Plant routes in front of the slices: each string is inserted before the health mount.
 const apiPath = join(app, "apps", "server", "src", "api.ts")
 const api = await Bun.file(apiPath).text()
-await Bun.write(
-  apiPath,
-  api.replace(
-    '.route("/health",',
-    '.post("/planted", async (c) => c.json(await c.req.json()))\n    .route("/health",',
-  ),
-)
+const plant = (routes: ReadonlyArray<string>) =>
+  Bun.write(
+    apiPath,
+    api.replace('.route("/health",', `${routes.join("\n    ")}\n    .route("/health",`),
+  )
+// A write route that takes no body never parses it, so it answers malformed JSON with a 2xx.
+const ping = '.post("/ping", (c) => c.json({ ok: true }))'
+// A route that parses the body itself throws on malformed JSON: a 500 the pass must name.
+const throwing = '.post("/planted", async (c) => c.json(await c.req.json()))'
+
+// The generated slice's POST /:id and a body-less route pass the behavior pass as written.
+await plant([ping])
+await smokeBehavior({ name: "smoke --json (the behavior pass is its own gate)" })
+await plant([ping, throwing])
 await smokeBehavior({
   name: "smoke fails on a route that throws on a malformed body",
   failingRoute: "POST /api/planted",

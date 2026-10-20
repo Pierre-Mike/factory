@@ -85,7 +85,7 @@ export const behavior = async (input: {
     for (const probe of PROBES) {
       const answer = await send({ url: input.url, route, body: probe.body })
       if (probe === MALFORMED_JSON) malformed.push({ route, status: answer.status })
-      for (const problem of probeProblems(answer)) {
+      for (const problem of probeProblems({ probe, ...answer })) {
         problems.push(`${routeName(route)} (${probe.name}): ${problem}`)
       }
     }
@@ -99,7 +99,7 @@ export const behavior = async (input: {
   for (const problem of problems) console.error(`✖ ${problem}`)
   if (problems.length > 0) return false
   console.error(
-    `✓ behavior: ${routes.length} write route(s) answer bad bodies with a 4xx envelope and leak nothing; ${
+    `✓ behavior: ${routes.length} write route(s) take bad bodies without a 5xx and leak nothing; ${
       sessions.active
         ? "every non-public write route asks for a session"
         : "no write route asks for a session yet, so the session check is off"

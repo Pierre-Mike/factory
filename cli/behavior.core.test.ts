@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
   findLeaks,
   PROBES,
+  type Probe,
   parsePublicRoutes,
   probePath,
   probeProblems,
@@ -108,34 +109,59 @@ describe("PROBES", () => {
 
 describe("probeProblems", () => {
   const envelope = (tag: string) => JSON.stringify({ ok: false, error: { _tag: tag } })
+  const [malformed, large] = PROBES as [Probe, Probe]
 
   it("accepts a 4xx with the shared envelope", () => {
-    expect(probeProblems({ status: 400, body: envelope("BadRequest") })).toEqual([])
-    expect(probeProblems({ status: 413, body: envelope("PayloadTooLarge") })).toEqual([])
+    expect(probeProblems({ probe: malformed, status: 400, body: envelope("BadRequest") })).toEqual(
+      [],
+    )
+    expect(probeProblems({ probe: large, status: 413, body: envelope("PayloadTooLarge") })).toEqual(
+      [],
+    )
   })
 
-  it("rejects any status outside 4xx", () => {
-    expect(probeProblems({ status: 500, body: envelope("InternalServerError") })).toEqual([
+  it("accepts a route that ignores the body answering malformed JSON with 2xx", () => {
+    expect(probeProblems({ probe: malformed, status: 200, body: '{"ok":true}' })).toEqual([])
+    expect(probeProblems({ probe: malformed, status: 204, body: "" })).toEqual([])
+  })
+
+  it("rejects a 1 MB body that is not refused with a 4xx", () => {
+    expect(probeProblems({ probe: large, status: 200, body: '{"ok":true}' })).toEqual([
+      "answered 200, expected a 4xx",
+      "the body is not the ApiErrorBody envelope { ok: false, error: { _tag } }",
+    ])
+  })
+
+  it("rejects a 5xx on either probe", () => {
+    const body = envelope("InternalServerError")
+    expect(probeProblems({ probe: malformed, status: 500, body })).toEqual([
+      "answered 500, expected a 4xx or a route that ignores the body",
+    ])
+    expect(probeProblems({ probe: large, status: 500, body })).toEqual([
       "answered 500, expected a 4xx",
     ])
-    expect(probeProblems({ status: 200, body: envelope("x") })).toEqual([
-      "answered 200, expected a 4xx",
-    ])
   })
 
-  it("rejects a body that is not the envelope", () => {
+  it("rejects a 4xx that is not the envelope", () => {
     const problem = "the body is not the ApiErrorBody envelope { ok: false, error: { _tag } }"
-    expect(probeProblems({ status: 413, body: "Payload Too Large" })).toEqual([problem])
-    expect(probeProblems({ status: 400, body: '{"ok":false,"error":"bad"}' })).toEqual([problem])
+    expect(probeProblems({ probe: large, status: 413, body: "Payload Too Large" })).toEqual([
+      problem,
+    ])
+    expect(
+      probeProblems({ probe: malformed, status: 400, body: '{"ok":false,"error":"bad"}' }),
+    ).toEqual([problem])
   })
 
-  it("names what the body leaks", () => {
+  it("names what the body leaks, on a 2xx too", () => {
     const body = JSON.stringify({
       ok: false,
       error: { _tag: "BadRequest", stack: "at f (/a.ts:1:2)" },
     })
-    expect(probeProblems({ status: 400, body })).toEqual([
+    expect(probeProblems({ probe: malformed, status: 400, body })).toEqual([
       "the body leaks a stack frame (at f (/a.ts:1:2)",
+    ])
+    expect(probeProblems({ probe: malformed, status: 200, body: '"SELECT id FROM t"' })).toEqual([
+      "the body leaks SQL (SELECT id FROM)",
     ])
   })
 })
