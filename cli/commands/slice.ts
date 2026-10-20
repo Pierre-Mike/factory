@@ -1,9 +1,33 @@
-/** `axioms slice <name> [--door] [--no-io]`: write a new feature slice and wire it in. */
+/**
+ * `axioms slice <name> [--door] [--no-io]`: write a new feature slice and wire it in. On an
+ * existing slice, `--door` adds only its door, for the moment its first consumer appears.
+ */
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { fail, readText, runTool } from "../shell"
-import { nextSteps, parseSliceArgs, sliceFiles, type WiringSources, wireSlice } from "../slice.core"
+import {
+  doorFiles,
+  doorNextSteps,
+  nextSteps,
+  parseSliceArgs,
+  planSlice,
+  sliceFiles,
+  type WiringSources,
+  wireSlice,
+} from "../slice.core"
+
+const writeFiles = async (input: {
+  readonly server: string
+  readonly files: Record<string, string>
+}) => {
+  for (const [rel, content] of Object.entries(input.files)) {
+    const path = join(input.server, rel)
+    await mkdir(dirname(path), { recursive: true })
+    await Bun.write(path, content)
+    console.error(`created apps/server/${rel}`)
+  }
+}
 
 export const slice = async (input: {
   readonly root: string
@@ -14,7 +38,22 @@ export const slice = async (input: {
   const { name, door, io } = args
 
   const server = join(input.root, "apps", "server")
-  if (existsSync(join(server, "src", "features", name))) fail(`slice already exists: ${name}`)
+  const dir = join(server, "src", "features", name)
+  const plan = planSlice({
+    args,
+    existing: existsSync(dir)
+      ? {
+          io: existsSync(join(dir, `${name}.io.ts`)),
+          door: existsSync(join(dir, `${name}.door.ts`)),
+        }
+      : null,
+  })
+  if (!plan.ok) return fail(plan.error)
+  if (plan.plan === "door") {
+    await writeFiles({ server, files: doorFiles({ name }) })
+    console.error(`\nnext step:\n  ${doorNextSteps({ name })}`)
+    return
+  }
 
   // Every edit is computed before anything is written: a missing anchor fails with no files touched.
   const paths: WiringSources = {
@@ -33,13 +72,7 @@ export const slice = async (input: {
   })
   if (!wired.ok) return fail(wired.error)
 
-  const files = sliceFiles({ name, door, io })
-  for (const [rel, content] of Object.entries(files)) {
-    const path = join(server, rel)
-    await mkdir(dirname(path), { recursive: true })
-    await Bun.write(path, content)
-    console.error(`created apps/server/${rel}`)
-  }
+  await writeFiles({ server, files: sliceFiles({ name, door, io }) })
   await Bun.write(paths.api, wired.sources.api)
   await Bun.write(paths.runtime, wired.sources.runtime)
   await Bun.write(paths.http, wired.sources.http)
@@ -55,5 +88,5 @@ export const slice = async (input: {
     cwd: input.root,
   })
 
-  console.error(`\n${nextSteps({ name, io })}`)
+  console.error(`\n${nextSteps({ name, io, door })}`)
 }

@@ -36,7 +36,7 @@ const HELP = `axioms ${harnessVersion()}
   axioms adopt [--harness <spec>] [--no-install]
                                         bring the lite harness to an existing repo (no app template)
   axioms slice <feature> [--door] [--no-io]
-                                        add a feature slice (--no-io: one that owns no data)
+                                        add a feature slice (--no-io: owns no data; --door on an existing slice adds only its door)
   axioms dev                            wrangler dev (:8787) + vite (:5173)
   axioms check [--json] [--report <path>]
                                         lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, dupes

@@ -21,7 +21,8 @@ export const pascalCase = (name: string): string =>
 
 export const SLICE_USAGE =
   "usage: axioms slice <feature> [--door] [--no-io]   (kebab-case, e.g. user-profile)\n" +
-  "  --door   publish <feature>.door.ts, the one file other slices may import\n" +
+  "  --door   publish <feature>.door.ts, the one file other slices may import; on an existing\n" +
+  "           slice it adds only the door. Add it with its first consumer.\n" +
   "  --no-io  no <feature>.io.ts and no Layer in runtime.ts, for a slice that owns no data"
 
 export type SliceArgs =
@@ -240,16 +241,79 @@ describe.skipIf(BASE === undefined)("smoke: /api/${name}", () => {
 `,
   }
   if (!input.io) return withoutIo({ files, name })
-  if (input.door) {
-    files[`src/features/${name}/${name}.door.ts`] = `/**
- * Published door for the \`${name}\` slice: the one file another slice may import. Consumers
- * depend on the Tag, never on the implementation. Keep it narrow, and re-export the shared Schema
- * contract for any data that crosses it.
+  return input.door ? { ...files, ...doorFiles({ name }) } : files
+}
+
+/**
+ * The door: the one file another slice may import. Generated with the slice (`--door`) or added
+ * later, when its first consumer appears (`axioms slice <feature> --door` on an existing slice).
  */
-export { ${P}Io } from "./${name}.io"
-`
+export const doorFiles = (input: { readonly name: string }): Record<string, string> => {
+  const { name } = input
+  return {
+    [`src/features/${name}/${name}.door.ts`]: `/**
+ * Published door for the \`${name}\` slice: the one file another slice may import. Consumers
+ * depend on the Tag, never on the implementation. Keep it narrow: export only what another slice
+ * already imports, and re-export the shared Schema contract for any data that crosses it.
+ */
+export { ${pascalCase(name)}Io } from "./${name}.io"
+`,
   }
-  return files
+}
+
+/** What to generate for `axioms slice`: a new slice, only the door of an existing one, or why not. */
+export const planSlice = (input: {
+  readonly args: { readonly name: string; readonly door: boolean; readonly io: boolean }
+  /** What the slice folder already holds, or null when it does not exist. */
+  readonly existing: { readonly io: boolean; readonly door: boolean } | null
+}):
+  | { readonly ok: true; readonly plan: "slice" | "door" }
+  | { readonly ok: false; readonly error: string } => {
+  const { name, door } = input.args
+  const existing = input.existing
+  if (existing === null) return { ok: true, plan: "slice" }
+  if (!door) {
+    return {
+      ok: false,
+      error: `slice already exists: ${name}\n  to publish its door for a new consumer: axioms slice ${name} --door`,
+    }
+  }
+  if (existing.door) return { ok: false, error: `${name} already has ${name}.door.ts` }
+  if (!existing.io) {
+    return {
+      ok: false,
+      error: `${name} has no ${name}.io.ts, so there is no service for a door to publish. Add the io file and its Layer in platform/runtime.ts first.`,
+    }
+  }
+  return { ok: true, plan: "door" }
+}
+
+/** The import a consuming slice adds, in the same change as the door, so no export is ever unused. */
+export const doorNextSteps = (input: { readonly name: string }): string => {
+  const { name } = input
+  const P = pascalCase(name)
+  return `in the slice that needs ${name}, in this same change: import { ${P}Io } from "../${name}/${name}.door" in its *.routes.ts and name ${P}Io in RouteRuntime<${P}Io>. Until a slice imports it, fallow (the dead code gate of axioms check) fails ${name}.door.ts`
+}
+
+const DOOR_FILE = /features\/([a-z][a-z0-9-]*)\/\1\.door\.ts/g
+
+/**
+ * What the dead code gate adds under fallow's report when it lists a door (as an unused file when
+ * no slice imports it, as unused exports when one imports part of it) or an unused type export:
+ * the rule from the canon and the edit that satisfies it.
+ */
+export const unusedExportHints = (output: string): ReadonlyArray<string> => {
+  const doors = [...new Set([...output.matchAll(DOOR_FILE)].map((m) => m[1] ?? ""))]
+  const doorHints = doors.map(
+    (name) =>
+      `${name}.door.ts: a door exports only what another slice already imports. In this change, import from "../${name}/${name}.door" in the slice that uses it, or delete the unused export (or the whole door) until a slice needs it.`,
+  )
+  const typeHint = output.includes("Unused type exports")
+    ? [
+        "unused type export: a type used only inside an exported signature (a Context.Service shape) stays unexported, so drop its `export`; delete a type nothing uses.",
+      ]
+    : []
+  return [...doorHints, ...typeHint]
 }
 
 /** A slice that owns no data: the route calls the pure core and nothing else. */
@@ -301,7 +365,11 @@ export const build${P}App = (runtime: RouteRuntime<never>) =>
 }
 
 /** What the shell prints after generating a slice. */
-export const nextSteps = (input: { readonly name: string; readonly io: boolean }): string => {
+export const nextSteps = (input: {
+  readonly name: string
+  readonly io: boolean
+  readonly door: boolean
+}): string => {
   const { name } = input
   const steps = [
     ...(input.io ? [`add a migration in apps/server/migrations/ if ${name} stores data`] : []),
@@ -309,6 +377,7 @@ export const nextSteps = (input: { readonly name: string; readonly io: boolean }
     ...(input.io ? [`replace the stub query in ${name}.io.ts (deps.db is the SQL port)`] : []),
     `register new error tags in platform/http.ts, and remove Invalid${pascalCase(name)}Id once ${name}.core.ts no longer defines it`,
     `make smoke/${name}.smoke.test.ts check the real behaviour`,
+    ...(input.door ? [doorNextSteps({ name })] : []),
     "bun run check && bun run smoke",
   ]
   return `next steps:\n${steps.map((step, i) => `  ${i + 1}. ${step}`).join("\n")}`

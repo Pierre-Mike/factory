@@ -166,7 +166,67 @@ if (!stubIo.includes('FIND_BY_ID = "SELECT ? AS id"')) {
   process.exit(1)
 }
 await Bun.write(widgetsIo, stubIo.replace("SELECT ? AS id", "SELECT id FROM widgets WHERE id = ?"))
-await step({ name: "check (with slice)", cmd: ["bun", cli, "check"], cwd: app })
+
+// A door is added with its first consumer (issue #9). search owns no data: no service to publish.
+await step({
+  name: "slice --door refuses a slice without an io file",
+  cmd: ["bun", cli, "slice", "search", "--door"],
+  cwd: app,
+  expectFailure: true,
+  expectOutput: ["search has no search.io.ts"],
+})
+await step({
+  name: "slice --door adds only the door to an existing slice",
+  cmd: ["bun", cli, "slice", "widgets", "--door"],
+  cwd: app,
+  expectOutput: [
+    "created apps/server/src/features/widgets/widgets.door.ts",
+    'import { WidgetsIo } from "../widgets/widgets.door"',
+  ],
+})
+// Before the consumer imports it, the dead code gate fails and says what the canon says to do.
+await step({
+  name: "check fails on a door export nothing imports, naming the fix",
+  cmd: ["bun", cli, "check"],
+  cwd: app,
+  expectFailure: true,
+  expectOutput: [
+    "widgets.door.ts",
+    "a door exports only what another slice already imports",
+    'import from "../widgets/widgets.door" in the slice that uses it',
+    "✖ check failed: dead code",
+  ],
+})
+// The consumer: search reads through the widgets door.
+const searchRoutes = join(searchDir, "search.routes.ts")
+const searchSource = await Bun.file(searchRoutes).text()
+const consumerEdits: ReadonlyArray<readonly [string, string]> = [
+  [
+    'import { buildSearch, parseSearchId } from "./search.core"',
+    'import { WidgetsIo } from "../widgets/widgets.door"\nimport { buildSearch, parseSearchId } from "./search.core"',
+  ],
+  ["RouteRuntime<never>", "RouteRuntime<WidgetsIo>"],
+  [
+    "return buildSearch({ id })",
+    "const widget = yield* (yield* WidgetsIo).findById(id)\nreturn buildSearch({ id: widget.id })",
+  ],
+]
+const missingAnchor = consumerEdits.find(([from]) => !searchSource.includes(from))
+if (missingAnchor !== undefined) {
+  console.error(
+    `✖ selftest: search.routes.ts has no \`${missingAnchor[0]}\` (project kept at ${app})`,
+  )
+  process.exit(1)
+}
+let consumer = searchSource
+for (const [from, to] of consumerEdits) consumer = consumer.replace(from, to)
+await Bun.write(searchRoutes, consumer)
+await step({
+  name: "format the consumer",
+  cmd: ["bun", cli, "biome", "check", "--write", searchRoutes],
+  cwd: app,
+})
+await step({ name: "check (with slice and door consumer)", cmd: ["bun", cli, "check"], cwd: app })
 await step({ name: "smoke", cmd: ["bun", cli, "smoke"], cwd: app })
 await step({ name: "deploy dry run", cmd: ["bun", cli, "deploy", "--dry-run"], cwd: app })
 await step({

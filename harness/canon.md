@@ -11,7 +11,7 @@ apps/server/
       <feature>.io.ts          # I/O as an Effect service (Context.Service + Layer)
       <feature>.routes.ts      # Hono shell: impure read, pure core, respond
       <feature>.routes.test.ts # the route via testApp(): the real app over in-memory SQLite
-      <feature>.door.ts        # opt-in: the only file other slices may import
+      <feature>.door.ts        # added with its first consumer: the only file other slices may import
     platform/                  # runtime, typed config, HTTP errors, JSON bodies, the SQL port, testApp()
     api.ts                     # mounts every slice under /api, exports AppType
     worker.ts                  # composition root (Cloudflare Workers entry)
@@ -72,6 +72,12 @@ shared/                        # effect Schema contracts used by server and web
 - Define `queryOptions` once. The route loader calls `ensureQueryData`, the component calls
   `useSuspenseQuery` on the same options.
 - A slice may import another slice's `<feature>.door.ts` only, never its other files.
+- A door exports only what another slice already imports. Add the door and its export with the
+  first consumer: `bun run slice <feature> --door` adds only the door to an existing slice, and the
+  consuming slice imports it in the same change. fallow, the dead code gate of `axioms check`,
+  fails a door export nothing imports.
+- A type used only inside an exported signature, such as a `Context.Service` shape, stays
+  unexported. fallow reports an exported type no one imports.
 - Commits follow `type(scope)?: subject`, with a first line of at most 150 characters. Say what
   changed and why; put the rest in the body. The commit-msg hook rejects anything else.
 - A change to CI/CD is dry-run before it leaves the machine. When a push touches workflows,

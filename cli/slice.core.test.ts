@@ -1,14 +1,18 @@
 import { describe, expect, it } from "bun:test"
 import {
+  doorFiles,
+  doorNextSteps,
   isSliceName,
   mountRoute,
   nextSteps,
   parseSliceArgs,
   pascalCase,
+  planSlice,
   registerLayer,
   registerTag,
   SLICE_USAGE,
   sliceFiles,
+  unusedExportHints,
   wireSlice,
 } from "./slice.core"
 
@@ -150,12 +154,12 @@ describe("parseSliceArgs", () => {
 
 describe("nextSteps", () => {
   it("drops the io step when the slice has none", () => {
-    expect(nextSteps({ name: "items", io: true })).toContain("items.io.ts")
-    expect(nextSteps({ name: "items", io: false })).not.toContain("items.io.ts")
+    expect(nextSteps({ name: "items", io: true, door: false })).toContain("items.io.ts")
+    expect(nextSteps({ name: "items", io: false, door: false })).not.toContain("items.io.ts")
   })
 
   it("says to remove the stub tag once the core no longer defines it", () => {
-    expect(nextSteps({ name: "items", io: false })).toContain("remove InvalidItemsId")
+    expect(nextSteps({ name: "items", io: false, door: false })).toContain("remove InvalidItemsId")
   })
 })
 
@@ -238,5 +242,102 @@ describe("wireSlice", () => {
       ok: false,
       error: "platform/http.ts: no `const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {`",
     })
+  })
+})
+
+describe("planSlice", () => {
+  const args = { name: "posts", door: false, io: true }
+
+  it("generates a new slice when none exists", () => {
+    expect(planSlice({ args, existing: null })).toEqual({ ok: true, plan: "slice" })
+  })
+
+  it("adds only the door to an existing slice that has an io file", () => {
+    expect(
+      planSlice({ args: { ...args, door: true }, existing: { io: true, door: false } }),
+    ).toEqual({ ok: true, plan: "door" })
+  })
+
+  it("refuses an existing slice without --door, and points at --door", () => {
+    const result = planSlice({ args, existing: { io: true, door: false } })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain("slice already exists: posts")
+    expect(result.error).toContain("axioms slice posts --door")
+  })
+
+  it("refuses a door for a slice with no io file, naming the missing file", () => {
+    const result = planSlice({
+      args: { ...args, door: true },
+      existing: { io: false, door: false },
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain("posts has no posts.io.ts")
+  })
+
+  it("refuses a second door", () => {
+    const result = planSlice({ args: { ...args, door: true }, existing: { io: true, door: true } })
+    expect(result).toEqual({ ok: false, error: "posts already has posts.door.ts" })
+  })
+})
+
+describe("doorFiles", () => {
+  it("is the one door file sliceFiles adds with --door", () => {
+    const door = doorFiles({ name: "posts" })
+    expect(Object.keys(door)).toEqual(["src/features/posts/posts.door.ts"])
+    expect(door["src/features/posts/posts.door.ts"]).toContain(
+      'export { PostsIo } from "./posts.io"',
+    )
+    expect(sliceFiles({ name: "posts", door: true, io: true })).toMatchObject(door)
+  })
+})
+
+describe("doorNextSteps", () => {
+  it("tells the agent to import the door from its consumer in the same change", () => {
+    const steps = doorNextSteps({ name: "posts" })
+    expect(steps).toContain('import { PostsIo } from "../posts/posts.door"')
+    expect(steps).toContain("RouteRuntime<PostsIo>")
+    expect(steps).toContain("fallow")
+  })
+
+  it("is part of the next steps of a new slice generated with --door", () => {
+    expect(nextSteps({ name: "posts", io: true, door: true })).toContain(
+      'import { PostsIo } from "../posts/posts.door"',
+    )
+    expect(nextSteps({ name: "posts", io: true, door: false })).not.toContain("posts.door")
+  })
+})
+
+describe("unusedExportHints", () => {
+  it("names the import that a door export with no consumer is missing", () => {
+    const output = `● Unused exports (1)
+  apps/server/src/features/posts/posts.door.ts (1)
+    :5 PostsIo (re-export)
+`
+    const hints = unusedExportHints(output).join("\n")
+    expect(hints).toContain("posts.door.ts")
+    expect(hints).toContain('import from "../posts/posts.door" in the slice that uses it')
+    expect(hints).toContain("a door exports only what another slice already imports")
+  })
+
+  it("names the door once when no slice imports it, which fallow reports as an unused file", () => {
+    const output = `● Unused files (1)
+  apps/server/src/features/posts/posts.door.ts
+`
+    expect(unusedExportHints(output)).toHaveLength(1)
+    expect(unusedExportHints(output)[0]).toContain('import from "../posts/posts.door"')
+  })
+
+  it("says a type used only in an exported signature stays unexported", () => {
+    const hints = unusedExportHints(`● Unused type exports (1)
+  apps/server/src/features/auth/auth.io.ts
+    :27 OpenSession
+`).join("\n")
+    expect(hints).toContain("drop its `export`")
+  })
+
+  it("adds nothing for other dead code", () => {
+    expect(unusedExportHints("● Unused files (1)\n  apps/server/src/x.ts\n")).toEqual([])
   })
 })

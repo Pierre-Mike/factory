@@ -8,7 +8,8 @@
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { missingCoreTests } from "../colocation.core"
-import { run, runTool } from "../shell"
+import { run, runTool, type Sink } from "../shell"
+import { unusedExportHints } from "../slice.core"
 import { findSuppressions } from "../suppressions.core"
 import { doctor } from "./doctor"
 import { failedNames, type Gate, type GateRun, runGates, skippedNames } from "./gates"
@@ -63,6 +64,23 @@ const colocation = async (root: string): Promise<boolean> => {
   return false
 }
 
+/** fallow's dead code report, then the canon rule behind an unused door or type export. */
+const deadCode = async (input: { readonly root: string; readonly sink: Sink | undefined }) => {
+  const chunks: string[] = []
+  const code = await runTool({
+    tool: "fallow",
+    args: ["dead-code"],
+    cwd: input.root,
+    sink: (text) => {
+      chunks.push(text)
+      input.sink?.(text)
+    },
+  })
+  if (code === 0) return true
+  for (const hint of unusedExportHints(chunks.join(""))) console.error(`→ ${hint}`)
+  return false
+}
+
 export const check = async (input: {
   readonly root: string
   readonly collect: boolean
@@ -91,11 +109,7 @@ export const check = async (input: {
           ? (await run({ cmd: ["bun", "test"], cwd: root, sink })) === 0
           : { skipped: "no test files" },
     ],
-    [
-      "dead code",
-      async (sink) =>
-        (await runTool({ tool: "fallow", args: ["dead-code"], cwd: root, sink })) === 0,
-    ],
+    ["dead code", (sink) => deadCode({ root, sink })],
     [
       "duplication",
       async (sink) => (await runTool({ tool: "fallow", args: ["dupes"], cwd: root, sink })) === 0,
