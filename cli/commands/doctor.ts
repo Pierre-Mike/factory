@@ -5,6 +5,7 @@ import ts from "typescript"
 import {
   CLAUDE_SETTINGS,
   CLAUDE_SKILLS_DIR,
+  DEPLOY_WORKFLOW,
   type DoctorInput,
   type Finding,
   HTTP_BOUNDARY,
@@ -138,6 +139,7 @@ export const readDoctorInput = async (root: string): Promise<DoctorInput> => {
     ].map((path) => readTsconfig({ root, path })),
     nestedBiomeConfigs: nestedBiomeConfigs(root),
     ciWorkflow: readYaml(join(root, ".github", "workflows", "ci.yml")),
+    deployWorkflow: readYaml(join(root, DEPLOY_WORKFLOW)),
     featureNames: listSubdirs(join(server, "src", "features")),
     smokeFiles: listDir(join(server, "smoke")),
     allowlistedTags: parseAllowlistedTags(readText(join(server, "src", HTTP_BOUNDARY)) ?? ""),

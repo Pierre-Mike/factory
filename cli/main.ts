@@ -31,8 +31,9 @@ import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
 
 const HELP = `axioms ${harnessVersion()}
 
-  axioms new <dir> [--harness <spec>] [--no-install]
-                                        create a project from the template (pins the release tag)
+  axioms new <dir> [--harness <spec>] [--deploy push|manual] [--no-install]
+                                        create a project from the template (pins the release tag;
+                                        --deploy manual: deploy.yml runs only when started by hand)
   axioms adopt [--harness <spec>] [--no-install]
                                         bring the lite harness to an existing repo (no app template)
   axioms slice <feature> [--door] [--no-io]
@@ -52,7 +53,8 @@ const HELP = `axioms ${harnessVersion()}
   axioms baseline [--update]            fail when a gate reports fewer checks than gate-baseline.json (--update rewrites it)
   axioms doctor                         check that every harness gate is wired
   axioms rules [--apply]                branch protection from harness/github.rules.json (--apply writes it via gh)
-  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, .claude settings + skills, biome.json, lefthook.yml
+  axioms sync                           rewrite AGENTS.md, CLAUDE.md, notes rules, .claude settings + skills, biome.json, lefthook.yml;
+                                        add .github/workflows/deploy.yml when missing
   axioms hooks                          install the git hooks (runs on bun install)
   axioms commit-msg <file>              conventional-commit check (git hook)
   axioms biome|tsc <args>               run the pinned tool`

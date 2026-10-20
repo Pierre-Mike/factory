@@ -16,3 +16,12 @@ bunx wrangler login
 cd apps/server && bunx wrangler d1 create __APP_NAME__   # paste the id into wrangler.jsonc
 cd ../.. && bun run deploy
 ```
+
+After that, `.github/workflows/deploy.yml` deploys every push to `main` (or, with
+`"axioms": { "deploy": "manual" }` in package.json, only when you run `gh workflow run deploy`).
+It needs two secrets on GitHub:
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN
+gh secret set CLOUDFLARE_ACCOUNT_ID
+```

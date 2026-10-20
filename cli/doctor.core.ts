@@ -5,7 +5,7 @@
  */
 import { posix } from "node:path"
 import { extractCanon } from "./canon.core"
-import { releaseSpec } from "./new.core"
+import { type DeployMode, deployMode, releaseSpec } from "./new.core"
 import { pascalCase } from "./slice.core"
 
 export const HARNESS_PACKAGE = "@pierre-mike/axioms"
@@ -17,6 +17,8 @@ export const CLAUDE_SETTINGS = ".claude/settings.json"
 export const CLAUDE_SKILLS_DIR = ".claude/skills"
 /** The `id:` of the CI step v0.10.0 and v0.11.0 needed to fetch the then-private harness. */
 export const HARNESS_ACCESS_ID = "harness-access"
+/** The workflow that deploys main. It lives outside ci.yml, which `axioms ci-dry-run` replays. */
+export const DEPLOY_WORKFLOW = ".github/workflows/deploy.yml"
 
 export interface Finding {
   readonly rule: string
@@ -55,6 +57,8 @@ export interface DoctorInput {
   readonly nestedBiomeConfigs: ReadonlyArray<string>
   /** The parsed ci.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
   readonly ciWorkflow: unknown
+  /** The parsed deploy.yml: `null` when the file is missing, `undefined` when it is not valid YAML. */
+  readonly deployWorkflow: unknown
   readonly featureNames: ReadonlyArray<string>
   readonly smokeFiles: ReadonlyArray<string>
   readonly allowlistedTags: ReadonlyArray<string>
@@ -531,6 +535,7 @@ export const runDoctor = (input: DoctorInput): Finding[] => {
     ...(app ? checkSmokeCoverage(input) : []),
     ...(app ? checkAllowlist(input) : []),
     ...(app ? checkEffectMajor(input) : []),
+    ...(app ? checkDeploy({ workflow: input.deployWorkflow, mode: deployMode(input.pkg) }) : []),
   ]
 }
 
@@ -539,4 +544,98 @@ export const parseAllowlistedTags = (httpSource: string): string[] => {
   const block = httpSource.match(/STATUS_BY_TAG[^=]*=\s*\{([^}]*)\}/)
   if (!block?.[1]) return []
   return [...block[1].matchAll(/"?(\w+)"?\s*:\s*\d{3}/g)].flatMap((m) => (m[1] ? [m[1]] : []))
+}
+
+/** The events a workflow's `on:` names, in its string, list or mapping form. */
+const triggers = (workflow: unknown): string[] => {
+  const on = field({ value: workflow, key: "on" })
+  if (typeof on === "string") return [on]
+  return isRecord(on) ? Object.keys(on) : strings(on)
+}
+
+const triggerFinding = (input: {
+  readonly events: ReadonlyArray<string>
+  readonly mode: DeployMode
+}): Finding[] => {
+  const push = input.events.includes("push")
+  const remedy = 'set `on:` as the template does, or change "axioms": { "deploy" } in package.json'
+  if (input.mode === "push" && !push) {
+    return [
+      {
+        rule: "deploy",
+        problem: "package.json declares deploy on push, but deploy.yml has no push trigger",
+        remedy: `${remedy} to "manual"`,
+      },
+    ]
+  }
+  if (input.mode === "manual" && push) {
+    return [
+      {
+        rule: "deploy",
+        problem: 'package.json declares "deploy": "manual", but deploy.yml deploys on push',
+        remedy: `remove \`push:\` from \`on:\` in deploy.yml, or delete "deploy" from "axioms" in package.json`,
+      },
+    ]
+  }
+  if (input.mode === "manual" && !input.events.includes("workflow_dispatch")) {
+    return [
+      {
+        rule: "deploy",
+        problem:
+          "deploy.yml is manual-only but has no workflow_dispatch trigger, so nothing starts it",
+        remedy: "add `workflow_dispatch:` under `on:` in deploy.yml",
+      },
+    ]
+  }
+  return []
+}
+
+/**
+ * deploy.yml must run `axioms deploy` as a step that cannot be skipped or fail quietly, with the
+ * trigger package.json declares: on push to main by default, by hand only for `"deploy": "manual"`.
+ */
+const checkDeploy = (input: {
+  readonly workflow: unknown
+  readonly mode: DeployMode
+}): Finding[] => {
+  const workflow = input.workflow
+  if (workflow === null || workflow === undefined) {
+    return [
+      {
+        rule: "deploy",
+        problem:
+          workflow === null
+            ? `${DEPLOY_WORKFLOW} is missing, so nothing deploys main`
+            : `${DEPLOY_WORKFLOW} is not valid YAML`,
+        remedy:
+          workflow === null
+            ? "run `bunx axioms sync`"
+            : "fix it, or delete it and run `bunx axioms sync`",
+      },
+    ]
+  }
+  const jobsField = field({ value: workflow, key: "jobs" })
+  const jobs = isRecord(jobsField) ? Object.values(jobsField).filter(isRecord) : []
+  const deploys = jobs.some(
+    (job) =>
+      !optional(job) &&
+      (Array.isArray(job.steps) ? job.steps : [])
+        .filter(isRecord)
+        .some(
+          (step) =>
+            !optional(step) &&
+            typeof step.run === "string" &&
+            runsGate({ run: step.run, gate: "deploy" }),
+        ),
+  )
+  const gate: Finding[] = deploys
+    ? []
+    : [
+        {
+          rule: "deploy",
+          problem: "deploy.yml never runs `axioms deploy` as a step that must pass",
+          remedy: "add a step `run: bunx axioms deploy` with no if: or continue-on-error:",
+        },
+      ]
+  return [...gate, ...triggerFinding({ events: triggers(workflow), mode: input.mode })]
 }

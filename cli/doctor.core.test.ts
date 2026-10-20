@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { liteCiWorkflow } from "./adopt.core"
 import { writeCanon } from "./canon.core"
 import {
   BIOME_FILE_INCLUDES,
+  DEPLOY_WORKFLOW,
   type DoctorInput,
   HARNESS_BIOME,
   HARNESS_LEFTHOOK,
@@ -13,8 +16,15 @@ import {
   runDoctor,
   TSCONFIG_BASE,
 } from "./doctor.core"
+import { renderDeployWorkflow } from "./new.core"
 
 const SHA = "df4cb1c069e1874edd31b4311f1884172cec0e10"
+
+/** The template's deploy.yml, so the doctor is tested against the file `axioms new` ships. */
+const DEPLOY_TEMPLATE = readFileSync(
+  join(import.meta.dir, "..", "template", DEPLOY_WORKFLOW),
+  "utf8",
+)
 
 const HEALTHY_JOBS = {
   check: {
@@ -68,6 +78,7 @@ const healthy: DoctorInput = {
   ],
   nestedBiomeConfigs: [],
   ciWorkflow: { jobs: HEALTHY_JOBS },
+  deployWorkflow: Bun.YAML.parse(DEPLOY_TEMPLATE),
   featureNames: ["health"],
   smokeFiles: ["health.smoke.test.ts"],
   allowlistedTags: ["InvalidVerboseFlag"],
@@ -468,6 +479,7 @@ describe("lite profile (axioms adopt)", () => {
     tsconfigReferences: [],
     tsconfigs: [{ path: TSCONFIG_BASE, config: null }],
     ciWorkflow: Bun.YAML.parse(liteCiWorkflow("main")),
+    deployWorkflow: null,
     featureNames: [],
     smokeFiles: [],
     allowlistedTags: [],
@@ -529,5 +541,116 @@ describe("lite profile (axioms adopt)", () => {
       "actions/checkout@v6",
     )
     expect(rules({ ...lite, ciWorkflow: Bun.YAML.parse(unpinned) })).toEqual(["ci"])
+  })
+})
+
+describe("deploy.yml", () => {
+  const template = Bun.YAML.parse(DEPLOY_TEMPLATE) as {
+    jobs: { deploy: { steps: Array<Record<string, unknown>> } }
+  }
+  const DEPLOY_STEP = template.jobs.deploy.steps.findIndex(
+    (step) => step.run === "bunx axioms deploy",
+  )
+  const manualPkg = { ...(healthy.pkg as object), axioms: { deploy: "manual" } }
+  const manual = Bun.YAML.parse(renderDeployWorkflow({ template: DEPLOY_TEMPLATE, mode: "manual" }))
+  /** The template with its deploy step (or job) changed. */
+  const withStep = (input: {
+    readonly change: Record<string, unknown>
+    readonly on?: "job"
+  }): unknown => {
+    const { change } = input
+    const copy = structuredClone(template)
+    const job = copy.jobs.deploy
+    if (input.on === "job") Object.assign(job, change)
+    else job.steps[DEPLOY_STEP] = { ...job.steps[DEPLOY_STEP], ...change }
+    return copy
+  }
+  const problems = (input: Partial<DoctorInput>) =>
+    runDoctor({ ...healthy, ...input }).map((f) => `${f.rule}: ${f.problem}`)
+
+  it("finds the deploy step in the template", () => {
+    expect(DEPLOY_STEP).toBeGreaterThan(-1)
+  })
+
+  it("fails when deploy.yml is missing or not valid YAML", () => {
+    expect(problems({ deployWorkflow: null })).toEqual([
+      "deploy: .github/workflows/deploy.yml is missing, so nothing deploys main",
+    ])
+    expect(problems({ deployWorkflow: undefined })).toEqual([
+      "deploy: .github/workflows/deploy.yml is not valid YAML",
+    ])
+    expect(runDoctor({ ...healthy, deployWorkflow: null })[0]?.remedy).toBe(
+      "run `bunx axioms sync`",
+    )
+  })
+
+  it("fails when deploy.yml does not run `bunx axioms deploy`", () => {
+    const dryRun = withStep({ change: { run: "bunx axioms deploy --dry-run" } })
+    expect(problems({ deployWorkflow: dryRun })).toEqual([
+      "deploy: deploy.yml never runs `axioms deploy` as a step that must pass",
+    ])
+    expect(
+      rules({ ...healthy, deployWorkflow: withStep({ change: { run: "bunx wrangler deploy" } }) }),
+    ).toEqual(["deploy"])
+  })
+
+  it("fails when the deploy step or its job can be skipped", () => {
+    expect(rules({ ...healthy, deployWorkflow: withStep({ change: { if: "false" } }) })).toEqual([
+      "deploy",
+    ])
+    expect(
+      rules({
+        ...healthy,
+        deployWorkflow: withStep({ change: { if: "false" }, on: "job" }),
+      }),
+    ).toEqual(["deploy"])
+  })
+
+  it("fails when the deploy step or its job is allowed to fail", () => {
+    expect(
+      rules({ ...healthy, deployWorkflow: withStep({ change: { "continue-on-error": true } }) }),
+    ).toEqual(["deploy"])
+    expect(
+      rules({
+        ...healthy,
+        deployWorkflow: withStep({ change: { "continue-on-error": true }, on: "job" }),
+      }),
+    ).toEqual(["deploy"])
+  })
+
+  it("accepts both modes, each with the trigger package.json declares", () => {
+    expect(runDoctor({ ...healthy, pkg: manualPkg, deployWorkflow: manual })).toEqual([])
+    expect(problems({ deployWorkflow: manual })).toEqual([
+      "deploy: package.json declares deploy on push, but deploy.yml has no push trigger",
+    ])
+    expect(problems({ pkg: manualPkg })).toEqual([
+      'deploy: package.json declares "deploy": "manual", but deploy.yml deploys on push',
+    ])
+  })
+
+  it("fails a manual deploy.yml nobody can start", () => {
+    const { workflow_dispatch: _, ...noDispatch } = (manual as { on: Record<string, unknown> }).on
+    expect(
+      rules({
+        ...healthy,
+        pkg: manualPkg,
+        deployWorkflow: { ...(manual as object), on: noDispatch },
+      }),
+    ).toEqual(["deploy"])
+  })
+
+  it("does not ask an adopted (lite) repo for a deploy workflow", () => {
+    const litePkg = { ...(healthy.pkg as object), axioms: { profile: "lite" } }
+    expect(rules({ ...healthy, pkg: litePkg, deployWorkflow: null })).not.toContain("deploy")
+  })
+})
+
+describe("renderDeployWorkflow", () => {
+  it("ships the template as is for push, and without the push trigger for manual", () => {
+    expect(renderDeployWorkflow({ template: DEPLOY_TEMPLATE, mode: "push" })).toBe(DEPLOY_TEMPLATE)
+    const manual = Bun.YAML.parse(
+      renderDeployWorkflow({ template: DEPLOY_TEMPLATE, mode: "manual" }),
+    )
+    expect(Object.keys((manual as { on: object }).on)).toEqual(["workflow_dispatch"])
   })
 })
