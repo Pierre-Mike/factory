@@ -96,8 +96,9 @@ and adding `skipped` keeps the per-gate and summary numbers consistent.
 
 - An agent session runs `bunx axioms check --json` and parses stdout; no log scraping. The exit
   code still gates hooks and CI unchanged.
-- In evidence mode child tools run piped, not on a TTY, so they drop color on stderr too; the
-  captured evidence is plain text either way.
+- In evidence mode child tools run piped, not on a TTY, and `errors` strips ANSI escapes either
+  way. Biome keeps its color in a pipe, so the lint gate passes it `--colors=off` and uses its
+  summary reporter for evidence ([check lint output](../bug-fix/2026-10-20-check-lint-output.md)).
 - `errors` is capped evidence (20 lines, 400 characters per line), not a full log. The full output
   is only on stderr, so a consumer that needs more than the first lines must re-run or capture
   stderr itself.
