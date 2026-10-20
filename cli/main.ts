@@ -25,6 +25,7 @@ import { sync } from "./commands/sync"
 import { lintWorkflows } from "./commands/workflows"
 import { commitSubjectProblem } from "./commit-msg.core"
 import { parseDeployArgs } from "./deploy.core"
+import { parseDevArgs } from "./devserver.core"
 import { buildReport, parseReportArgs, renderReport } from "./report.core"
 import { parseRulesArgs } from "./rules.core"
 import { fail, harnessVersion, projectRoot, readText, runTool } from "./shell"
@@ -37,7 +38,9 @@ const HELP = `axioms ${harnessVersion()}
                                         bring the lite harness to an existing repo (no app template)
   axioms slice <feature> [--door] [--no-io]
                                         add a feature slice (--no-io: one that owns no data)
-  axioms dev                            wrangler dev (:8787) + vite (:5173)
+  axioms dev [--port <n>] [--persist-to <dir>]
+                                        wrangler dev + vite (:5173, API on :8787); --port 0 picks a
+                                        free port, --persist-to keeps the D1 state there
   axioms check [--json] [--report <path>]
                                         lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, dupes
   axioms notes [--seal]                 check .agents/notes; --seal freezes newly archived notes
@@ -93,9 +96,12 @@ switch (command) {
   case "check":
     await gatedReport({ command: "check", args, gather: (collect) => check({ root, collect }) })
     break
-  case "dev":
-    exit(await dev(root))
+  case "dev": {
+    const parsed = parseDevArgs(args)
+    if (!parsed.ok) fail(parsed.error)
+    else exit(await dev({ root, port: parsed.port, persistTo: parsed.persistTo }))
     break
+  }
   case "smoke":
     await gatedReport({ command: "smoke", args, gather: (collect) => smoke({ root, collect }) })
     break

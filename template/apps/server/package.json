@@ -7,7 +7,7 @@
     "./types": "./src/api.ts"
   },
   "scripts": {
-    "dev": "wrangler d1 migrations apply DB --local && wrangler dev --port 8787 --var ENVIRONMENT:development"
+    "dev": "wrangler d1 migrations apply DB --local && wrangler dev --ip 127.0.0.1 --port 8787 --var ENVIRONMENT:development"
   },
   "dependencies": {
     "@app/shared": "workspace:*",

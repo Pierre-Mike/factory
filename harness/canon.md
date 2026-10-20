@@ -191,6 +191,7 @@ harness. Fix the note, never the gate, and never copy a second notes gate into t
 ```bash
 bun install        # installs dependencies and git hooks
 bun run dev        # wrangler dev (API, :8787) + vite (web, :5173)
+bun run dev --port 0 --persist-to .wrangler/mine  # a free port and its own D1 state; prints the URL
 bun run check      # lint, typecheck, co-location, suppressions, notes, doctor, tests, dead code, duplication
 bun run smoke      # build the web app, start wrangler dev locally, run smoke/ over HTTP
 bun run slice      # generate a feature slice

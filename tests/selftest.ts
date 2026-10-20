@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 /**
  * End-to-end test of the factory: generate a project, run every gate, add a slice, run every gate
- * again, then smoke-test the real worker. If this passes, `axioms new` hands out a project that is
- * green from its first commit, and `axioms slice` keeps it green.
+ * again, then smoke-test the real worker and run two `axioms dev` servers side by side. If this
+ * passes, `axioms new` hands out a project that is green from its first commit, and
+ * `axioms slice` keeps it green.
  */
 import { mkdtempSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { PKG_ROOT } from "../cli/shell"
+import { collectOutput, pollStatus, survivors, watchTree } from "./processes"
 
 // The generated project pins this unreleased checkout with an absolute file: path on purpose.
 process.env.AXIOMS_ALLOW_LOCAL_HARNESS = "1"
@@ -168,6 +170,51 @@ if (!stubIo.includes('FIND_BY_ID = "SELECT ? AS id"')) {
 await Bun.write(widgetsIo, stubIo.replace("SELECT ? AS id", "SELECT id FROM widgets WHERE id = ?"))
 await step({ name: "check (with slice)", cmd: ["bun", cli, "check"], cwd: app })
 await step({ name: "smoke", cmd: ["bun", cli, "smoke"], cwd: app })
+
+// Two `axioms dev --port 0` runs side by side in one project (issue #14): each picks its own
+// ports, applies the migrations to its own state (so /api/widgets finds the migrated row), and
+// answers on its own URL. Both are then stopped, and every process they started must be gone.
+console.error("\n━━ selftest: two axioms dev runs at once, each on its own port and state ━━")
+const devRuns = ["a", "b"].map((name) => {
+  const persistTo = join(workdir, `dev-state-${name}`)
+  const proc = Bun.spawn(["bun", cli, "dev", "--port", "0", "--persist-to", persistTo], {
+    cwd: app,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  return { name, proc, tree: watchTree(proc.pid), output: collectOutput(proc) }
+})
+const devUrls = await Promise.all(
+  devRuns.map(async (run) => (await run.output.waitFor(/app on (http:\/\/127\.0\.0\.1:\d+)/))?.[1]),
+)
+const devProblems: string[] = []
+for (const [index, run] of devRuns.entries()) {
+  const url = devUrls[index]
+  if (url === undefined) {
+    devProblems.push(`dev ${run.name} never printed its URL`)
+    continue
+  }
+  for (const path of ["/api/health", "/api/widgets?id=abc"]) {
+    const status = await pollStatus(`${url}${path}`)
+    if (status !== 200) devProblems.push(`dev ${run.name}: ${url}${path} answered ${status}`)
+  }
+}
+if (devUrls[0] !== undefined && devUrls[0] === devUrls[1]) {
+  devProblems.push(`both runs share ${devUrls[0]}`)
+}
+for (const run of devRuns) run.proc.kill("SIGTERM")
+for (const run of devRuns) {
+  await run.proc.exited
+  await run.output.done
+  const left = await survivors(await run.tree.stop())
+  if (left !== "") devProblems.push(`dev ${run.name} left processes running:\n${left}`)
+}
+if (devProblems.length > 0) {
+  for (const run of devRuns) process.stderr.write(run.output.text())
+  console.error(`✖ selftest failed at: parallel dev (${devProblems.join("; ")})`)
+  process.exit(1)
+}
+console.error(`✓ two dev runs answered on ${devUrls.join(" and ")} and stopped cleanly`)
 await step({ name: "deploy dry run", cmd: ["bun", cli, "deploy", "--dry-run"], cwd: app })
 await step({
   name: "deploy refuses placeholders",
