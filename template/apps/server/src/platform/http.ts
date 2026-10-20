@@ -23,6 +23,7 @@ const INTERNAL_SERVER_ERROR = { _tag: "InternalServerError" } as const
 
 const STATUS_BY_TAG: Record<string, ContentfulStatusCode> = {
   InvalidVerboseFlag: 400,
+  InvalidBody: 400,
   BadRequest: 400,
   Unauthorized: 401,
   Forbidden: 403,

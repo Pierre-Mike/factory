@@ -12,7 +12,7 @@ apps/server/
       <feature>.routes.ts      # Hono shell: impure read, pure core, respond
       <feature>.routes.test.ts # the route over an in-memory SQLite database
       <feature>.door.ts        # opt-in: the only file other slices may import
-    platform/                  # runtime, typed config, HTTP errors, the SQL port
+    platform/                  # runtime, typed config, HTTP errors, JSON bodies, the SQL port
     api.ts                     # mounts every slice under /api, exports AppType
     worker.ts                  # composition root (Cloudflare Workers entry)
   migrations/                  # D1 migrations; tests run against the same files
@@ -33,6 +33,11 @@ shared/                        # effect Schema contracts used by server and web
   lifted at the boundary with `yield* Effect.fromResult(core(...))`, so a failure short-circuits as
   a typed error. A bare `yield* core(...)` does not typecheck in Effect 4, so `tsc` catches a
   missing lift.
+- A route that takes a JSON body decodes it at the edge with `jsonBody(schema)` from
+  `platform/validate.ts`, where `schema` is the body's contract. A body that does not match answers
+  the 400 `InvalidBody` envelope before the handler runs, and the handler reads the decoded body
+  with `c.req.valid("json")`. `jsonBody` is a Hono validator, so `hc<AppType>` types the body and
+  the web app calls `api.<x>[":id"].$post({ param, json })`.
 
 ## Rules (each one is enforced by a tool)
 

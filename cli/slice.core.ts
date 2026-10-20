@@ -95,26 +95,39 @@ export const ${P}IoLive = (_deps: AppDeps): Layer.Layer<${P}Io> =>
     [`src/features/${name}/${name}.routes.ts`]: `/**
  * Hono shell for the \`${name}\` slice: impure read through the io service, pure core in the
  * middle, shared error envelope on a failure. Core results are lifted with \`Effect.fromResult\`.
+ * A JSON body is decoded by \`jsonBody(schema)\`, which also lets \`hc<AppType>\` type it.
  */
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { Hono } from "hono"
 import { type RouteRuntime, respond } from "../../platform/http"
+import { jsonBody } from "../../platform/validate"
 import { build${P}, parse${P}Id } from "./${name}.core"
 import { ${P}Io } from "./${name}.io"
 
+/** The body \`POST /:id\` accepts. Move it to shared/src once the web app sends it. */
+const ${P}Input = Schema.Struct({ message: Schema.String })
+
 export const build${P}App = (runtime: RouteRuntime<${P}Io>) =>
-  new Hono().get("/", (c) =>
-    respond({
-      c,
-      runtime,
-      program: Effect.gen(function* () {
-        const id = yield* Effect.fromResult(parse${P}Id(c.req.query("id")))
-        const io = yield* ${P}Io
-        const entity = yield* io.findById(id)
-        return build${P}({ id: entity.id })
+  new Hono()
+    .get("/", (c) =>
+      respond({
+        c,
+        runtime,
+        program: Effect.gen(function* () {
+          const id = yield* Effect.fromResult(parse${P}Id(c.req.query("id")))
+          const io = yield* ${P}Io
+          const entity = yield* io.findById(id)
+          return build${P}({ id: entity.id })
+        }),
       }),
-    }),
-  )
+    )
+    .post("/:id", jsonBody(${P}Input), (c) =>
+      respond({
+        c,
+        runtime,
+        program: Effect.succeed({ id: c.req.param("id"), message: c.req.valid("json").message }),
+      }),
+    )
 `,
     [`src/features/${name}/${name}.routes.test.ts`]: `import { describe, expect, it } from "bun:test"
 import { decodeApiErrorBody } from "@app/shared"
@@ -139,6 +152,27 @@ describe("GET /${name}", () => {
     expect(decodeApiErrorBody(await res.json()).error._tag).toBe("Invalid${P}Id")
   })
 })
+
+describe("POST /${name}/:id", () => {
+  const post = (body: unknown) =>
+    app.request("/abc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })
+
+  it("answers a body that matches the Schema", async () => {
+    const res = await post({ message: "hi" })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ id: "abc", message: "hi" })
+  })
+
+  it("maps a body that does not match to the shared 400 InvalidBody envelope", async () => {
+    const res = await post({ message: 1 })
+    expect(res.status).toBe(400)
+    expect(decodeApiErrorBody(await res.json()).error._tag).toBe("InvalidBody")
+  })
+})
 `,
     [`smoke/${name}.smoke.test.ts`]: `/** Runs only under \`bun run smoke\`, against a real \`wrangler dev\`. */
 import { describe, expect, it } from "bun:test"
@@ -153,6 +187,15 @@ describe.skipIf(BASE === undefined)("smoke: /api/${name}", () => {
 
   it("returns the shared 400 envelope for a missing id", async () => {
     const res = await fetch(\`\${BASE}/api/${name}\`)
+    expect(res.status).toBe(400)
+  })
+
+  it("returns the shared 400 envelope for malformed JSON", async () => {
+    const res = await fetch(\`\${BASE}/api/${name}/abc\`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{bad json",
+    })
     expect(res.status).toBe(400)
   })
 })

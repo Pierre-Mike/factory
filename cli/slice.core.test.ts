@@ -56,6 +56,15 @@ describe("sliceFiles", () => {
     ])
   })
 
+  it("shows a POST that validates its JSON body with jsonBody, tested and smoked", () => {
+    const files = sliceFiles({ name: "items", door: false })
+    expect(files["src/features/items/items.routes.ts"]).toContain(
+      '.post("/:id", jsonBody(ItemsInput), (c) =>',
+    )
+    expect(files["src/features/items/items.routes.test.ts"]).toContain('.toBe("InvalidBody")')
+    expect(files["smoke/items.smoke.test.ts"]).toContain('body: "{bad json"')
+  })
+
   it("adds the door only when asked", () => {
     expect(Object.keys(sliceFiles({ name: "items", door: true }))).toContain(
       "src/features/items/items.door.ts",
